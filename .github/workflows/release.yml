@@ -6,6 +6,11 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# 添加权限设置
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -114,7 +119,7 @@ jobs:
         echo "::set-output name=changelog::$(cat RELEASE_NOTES.md | sed ':a;N;$!ba;s/\n/%0A/g')"
         
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         body: ${{ steps.get_changelog.outputs.changelog }}
         files: |
