@@ -39,7 +39,8 @@ jobs:
       run: |
         go test -v ./...
         
-    - name: Build binary
+    - name: Build binary (Unix)
+      if: runner.os != 'Windows'
       run: |
         # Set environment variables for cross-compilation
         export GOOS=${{ matrix.platform.goos }}
@@ -62,7 +63,34 @@ jobs:
           echo "Build failed: ${BINARY_NAME} not found"
           exit 1
         fi
+      shell: bash
+      
+    - name: Build binary (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        # Set environment variables for cross-compilation
+        $env:GOOS="${{ matrix.platform.goos }}"
+        $env:GOARCH="${{ matrix.platform.goarch }}"
+        $env:CGO_ENABLED="0"
         
+        # Set binary name based on platform
+        if ("${{ matrix.platform.goos }}" -eq "windows") {
+          $BINARY_NAME = "encrypt-${{ matrix.platform.goos }}-${{ matrix.platform.goarch }}.exe"
+        } else {
+          $BINARY_NAME = "encrypt-${{ matrix.platform.goos }}-${{ matrix.platform.goarch }}"
+        }
+        
+        # Build the binary
+        Write-Host "Building $BINARY_NAME for ${{ matrix.platform.goos }}/${{ matrix.platform.goarch }}"
+        go build -o "$BINARY_NAME" -ldflags "-s -w" encrypt.go help.go
+        
+        # Verify build succeeded
+        if (-not (Test-Path "$BINARY_NAME")) {
+          Write-Host "Build failed: $BINARY_NAME not found"
+          exit 1
+        }
+      shell: pwsh
+      
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
