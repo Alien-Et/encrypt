@@ -5,9 +5,9 @@ import (
 	"os"
 )
 
-// ShowHelp 显示帮助信息并退出程序
-func ShowHelp() {
-	helpText := `文件加密/解密工具 ` + Version + `
+// HelpText 包含详细的文件操作说明
+const HelpText = `
+文件加密/解密工具使用说明
 ========================
 
 一、基本功能
@@ -80,6 +80,9 @@ func ShowHelp() {
 4. 解密完成后会自动删除映射文件
 5. 程序支持断点续传，意外中断后可重新运行继续处理
 `
-	fmt.Print(helpText)
+
+// ShowHelp 显示帮助信息并退出程序
+func ShowHelp() {
+	fmt.Print(HelpText)
 	os.Exit(0)
 }
