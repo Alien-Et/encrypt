@@ -14,7 +14,7 @@ jobs:
     runs-on: ${{ matrix.platform.os }}
     strategy:
       matrix:
-        go-version: [1.18]
+        go-version: [1.21]
         platform:
           - { os: ubuntu-latest,   goos: linux,   goarch: amd64 }
           - { os: windows-latest,  goos: windows, goarch: amd64 }
