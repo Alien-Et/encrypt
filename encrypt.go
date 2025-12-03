@@ -24,6 +24,11 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// 版本信息
+const (
+	Version = "v1.0.0"
+)
+
 // 配置文件名称（只支持YAML）
 const (
 	CONFIG_FILENAME_YAML = "encrypt_config.yaml"
@@ -114,6 +119,8 @@ func main() {
 	// 解析命令行参数
 	help := flag.Bool("help", false, "显示帮助信息")
 	h := flag.Bool("h", false, "显示帮助信息")
+	version := flag.Bool("version", false, "显示版本信息")
+	v := flag.Bool("v", false, "显示版本信息")
 	encryptMode := flag.Bool("encrypt", false, "加密模式")
 	decryptMode := flag.Bool("decrypt", false, "解密模式")
 	flag.Parse()
@@ -121,6 +128,12 @@ func main() {
 	// 检查是否需要显示帮助信息
 	if *help || *h {
 		ShowHelp()
+	}
+
+	// 检查是否需要显示版本信息
+	if *version || *v {
+		fmt.Printf("文件加密/解密工具 %s\n", Version)
+		os.Exit(0)
 	}
 
 	// 检查命令行参数
@@ -1243,7 +1256,7 @@ func encryptFileAES(inFile *os.File, outFile *os.File, keyWithSalt []byte, fileS
 				// 确保数据长度是块大小的倍数
 				if n%aes.BlockSize != 0 {
 					// 这种情况理论上不应该发生，因为我们使用了足够大的缓冲区
-					// 但为了安全起见，我们还是处理一下
+					// 但为了安全起起见，我们还是处理一下
 					return fmt.Errorf("读取的数据长度不是块大小的倍数")
 				}
 				// 加密数据
@@ -1971,6 +1984,10 @@ func safeJoin(basePath, subPath string) (string, error) {
 	
 	return joined, nil
 }
+
+
+
+
 
 
 
