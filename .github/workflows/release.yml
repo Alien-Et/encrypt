@@ -46,6 +46,9 @@ jobs:
         # Copy config file to release assets directory
         cp encrypt_config.yaml release-assets/ || echo "No config file found"
         
+        # Copy CHANGELOG file to release assets directory
+        cp CHANGELOG.md release-assets/ || echo "No CHANGELOG file found"
+        
         # Create checksums
         cd release-assets
         sha256sum * > checksums.txt
@@ -63,15 +66,31 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
     - name: Download artifacts
       uses: actions/download-artifact@v3
       with:
         name: encrypt-binaries
         path: release-assets
         
+    - name: Get version
+      id: get_version
+      run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+      
+    - name: Get changelog
+      id: get_changelog
+      run: |
+        VERSION=${{ steps.get_version.outputs.VERSION }}
+        # Extract changelog for this version
+        awk "/## \[${VERSION##v}\]/,/^## \[.*\]/" CHANGELOG.md | head -n -1 > RELEASE_NOTES.md || echo "No changelog found for this version"
+        echo "::set-output name=changelog::$(cat RELEASE_NOTES.md | sed ':a;N;$!ba;s/\n/%0A/g')"
+        
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
+        body: ${{ steps.get_changelog.outputs.changelog }}
         files: |
           release-assets/*
         draft: false
