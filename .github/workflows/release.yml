@@ -49,9 +49,6 @@ jobs:
         export GOARCH=${{ matrix.platform.goarch }}
         export CGO_ENABLED=0
         
-        # Create output directory
-        mkdir -p dist
-        
         # Set binary name based on platform
         if [ "${{ matrix.platform.goos }}" = "windows" ]; then
           BINARY_NAME="encrypt-${{ matrix.platform.goos }}-${{ matrix.platform.goarch }}.exe"
@@ -61,11 +58,11 @@ jobs:
         
         # Build the binary
         echo "Building ${BINARY_NAME} for ${{ matrix.platform.goos }}/${{ matrix.platform.goarch }}"
-        go build -o "dist/${BINARY_NAME}" -ldflags "-s -w" encrypt.go help.go
+        go build -o "${BINARY_NAME}" -ldflags "-s -w" encrypt.go help.go
         
         # Verify build succeeded
-        if [ ! -f "dist/${BINARY_NAME}" ]; then
-          echo "Build failed: dist/${BINARY_NAME} not found"
+        if [ ! -f "${BINARY_NAME}" ]; then
+          echo "Build failed: ${BINARY_NAME} not found"
           exit 1
         fi
         
@@ -73,7 +70,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: encrypt-${{ matrix.platform.goos }}-${{ matrix.platform.goarch }}
-        path: dist/
+        path: encrypt-*
         
   release:
     needs: build
