@@ -12,6 +12,13 @@ jobs:
     strategy:
       matrix:
         go-version: [1.18]
+        # Define platforms to build for
+        platform:
+          - { os: ubuntu-latest,   goos: linux,   goarch: amd64 }
+          - { os: windows-latest,  goos: windows, goarch: amd64 }
+          - { os: macos-latest,    goos: darwin,  goarch: amd64 }
+          - { os: macos-latest,    goos: darwin,  goarch: arm64 }
+          - { os: ubuntu-latest,   goos: android, goarch: arm64 }
         
     steps:
     - name: Checkout code
@@ -30,35 +37,38 @@ jobs:
       run: |
         go test -v ./...
         
-    - name: Build binaries
+    - name: Build binary
       run: |
-        chmod +x build.sh
-        ./build.sh
+        # Set environment variables for cross-compilation
+        export GOOS=${{ matrix.platform.goos }}
+        export GOARCH=${{ matrix.platform.goarch }}
+        export CGO_ENABLED=0
         
-    - name: Create release assets
-      run: |
-        # Create a directory for release assets
-        mkdir -p release-assets
+        # Create output directory
+        mkdir -p dist
         
-        # Copy binaries to release assets directory
-        cp dist/* release-assets/ || echo "No binaries found in dist/"
+        # Set binary name based on platform
+        if [ "${{ matrix.platform.goos }}" = "windows" ]; then
+          BINARY_NAME="encrypt-${{ matrix.platform.goos }}-${{ matrix.platform.goarch }}.exe"
+        else
+          BINARY_NAME="encrypt-${{ matrix.platform.goos }}-${{ matrix.platform.goarch }}"
+        fi
         
-        # Copy config file to release assets directory
-        cp encrypt_config.yaml release-assets/ || echo "No config file found"
+        # Build the binary
+        echo "Building ${BINARY_NAME} for ${{ matrix.platform.goos }}/${{ matrix.platform.goarch }}"
+        go build -o "dist/${BINARY_NAME}" -ldflags "-s -w" encrypt.go help.go
         
-        # Copy CHANGELOG file to release assets directory
-        cp CHANGELOG.md release-assets/ || echo "No CHANGELOG file found"
+        # Verify build succeeded
+        if [ ! -f "dist/${BINARY_NAME}" ]; then
+          echo "Build failed: dist/${BINARY_NAME} not found"
+          exit 1
+        fi
         
-        # Create checksums
-        cd release-assets
-        sha256sum * > checksums.txt
-        cd ..
-        
-    - name: Upload artifacts
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: encrypt-binaries
-        path: release-assets/
+        name: encrypt-${{ matrix.platform.goos }}-${{ matrix.platform.goarch }}
+        path: dist/
         
   release:
     needs: build
@@ -69,11 +79,27 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Download artifacts
+    - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
-        name: encrypt-binaries
         path: release-assets
+        
+    - name: Organize release assets
+      run: |
+        # Create final release directory
+        mkdir -p final-release
+        
+        # Move all binaries to final release directory
+        find release-assets -name "encrypt-*" -type f -exec mv {} final-release/ \;
+        
+        # Copy config file and changelog to final release directory
+        cp encrypt_config.yaml final-release/ || echo "No config file found"
+        cp CHANGELOG.md final-release/ || echo "No CHANGELOG file found"
+        
+        # Create checksums
+        cd final-release
+        sha256sum * > checksums.txt
+        cd ..
         
     - name: Get version
       id: get_version
@@ -92,7 +118,7 @@ jobs:
       with:
         body: ${{ steps.get_changelog.outputs.changelog }}
         files: |
-          release-assets/*
+          final-release/*
         draft: false
         prerelease: false
       env:
