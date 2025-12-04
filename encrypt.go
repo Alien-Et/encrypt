@@ -13,6 +13,7 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -78,8 +79,12 @@ type StatData struct {
 	TotalDuplicateDel   int
 	TotalFilesEncrypted int
 	TotalDirsObfuscated int
+	
+	// 添加进度跟踪字段
+	CurrentProcessed    int
+	TotalToProcess     int
+	OperationType      string // "encrypt" or "decrypt"
 }
-
 
 
 // 操作模式常量
@@ -97,11 +102,18 @@ func main() {
 	h := flag.Bool("h", false, "显示帮助信息")
 	encryptMode := flag.Bool("encrypt", false, "加密模式")
 	decryptMode := flag.Bool("decrypt", false, "解密模式")
+	webui := flag.Bool("webui", false, "启动WebUI管理界面")
 	flag.Parse()
 
 	// 检查是否需要显示帮助信息
 	if *help || *h {
 		ShowHelp()
+	}
+
+	// 检查是否启动WebUI
+	if *webui {
+		startWebUI()
+		return
 	}
 
 	// 检查命令行参数
@@ -665,6 +677,16 @@ func collectDirFiles(targetDir string, config *DynamicConfig, fileMap map[string
 func encryptFiles(targetDir string, key []byte, config *DynamicConfig, fileMap map[string]*FileMapItem, stat *StatData) {
 	// 首先收集整个目录树中的文件
 	allFiles, encryptedMd5Set := collectDirFiles(targetDir, config, fileMap)
+	
+	// 设置总处理数量
+	stat.TotalToProcess = len(allFiles)
+	stat.CurrentProcessed = 0
+	stat.OperationType = "encrypt"
+	
+	// 如果没有文件需要处理，直接返回
+	if stat.TotalToProcess == 0 {
+		return
+	}
 
 	// 创建一个映射，方便快速查找文件是否需要处理
 	filesToProcess := make(map[string]bool)
@@ -672,8 +694,7 @@ func encryptFiles(targetDir string, key []byte, config *DynamicConfig, fileMap m
 		filesToProcess[file] = true
 	}
 
-	_ = filepath.Walk(targetDir, func(root string, info os.FileInfo, err error) error {
-		if err != nil {
+	_ = filepath.Walk(targetDir, func(root string, info os.FileInfo, err error) error {		if err != nil {
 			fmt.Printf("⚠️  访问路径失败: %s, 错误: %v\n", root, err)
 			return nil
 		}
@@ -738,9 +759,9 @@ func encryptFiles(targetDir string, key []byte, config *DynamicConfig, fileMap m
 		
 		// 如果找到重复文件，跳过加密
 		if foundDuplicate {
+			stat.CurrentProcessed++
 			return nil
 		}
-
 		var obfFileName string
 		for i := 0; i < 100; i++ { // 添加重试限制，避免无限循环
 			obfFileName = generateObfuscatedName(false, config)
@@ -761,10 +782,10 @@ func encryptFiles(targetDir string, key []byte, config *DynamicConfig, fileMap m
 		if err != nil {
 			fmt.Printf("⚠️  加密文件失败: %s (真实路径: %s), 错误: %v\n", filePath, realPath, err)
 			delete(fileMap, obfFileName)
+			stat.CurrentProcessed++
 			return nil
 		}
-
-		if err := os.Chmod(obfFilePath, 0644); err != nil {
+	if err := os.Chmod(obfFilePath, 0644); err != nil {
 			fmt.Printf("⚠️  修改加密文件权限失败: %s, 错误: %v\n", obfFilePath, err)
 		}
 
@@ -781,6 +802,9 @@ func encryptFiles(targetDir string, key []byte, config *DynamicConfig, fileMap m
 		}
 		encryptedMd5Set[dir][fileMd5] = struct{}{}
 		fmt.Printf("✅ 加密文件: %s -> %s\n", filename, obfFileName)
+		
+		// 更新进度信息
+		stat.CurrentProcessed++
 		return nil
 	})
 }
@@ -1422,10 +1446,37 @@ func decryptTargetDir(targetDir string, key []byte, config *DynamicConfig, fileM
 
 // recoverDirs 恢复目录结构（修改为符合新解密逻辑）
 func recoverDirs(targetDir string, config *DynamicConfig, dirMap map[string]*DirMapItem, stat *StatData) {
+	// 首先统计需要恢复的目录数量
+	var totalDirs int
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		fmt.Printf("⚠️  读取目录失败: %s, 错误: %v\n", targetDir, err)
+		return
+	}
+	
+	// 统计需要恢复的目录数量
+	for _, entry := range entries {
+		if entry.IsDir() {
+			dirName := entry.Name()
+			if dirName == config.MapFilename || dirName == config.LockFilename {
+				continue
+			}
+			
+			if strings.HasPrefix(dirName, ".") {
+				if _, exists := dirMap[dirName]; exists {
+					totalDirs++
+				}
+			}
+		}
+	}
+	
+	// 更新总处理数量（累加目录数量）
+	stat.TotalToProcess += totalDirs
+	
 	// 采用「先子目录后父目录」的递归顺序，确保多层级目录正确恢复
 	
 	// 首先递归处理所有子目录（深度优先）
-	entries, err := os.ReadDir(targetDir)
+	entries, err = os.ReadDir(targetDir)
 	if err != nil {
 		fmt.Printf("⚠️  读取目录失败: %s, 错误: %v\n", targetDir, err)
 		return
@@ -1521,6 +1572,9 @@ func recoverDirs(targetDir string, config *DynamicConfig, dirMap map[string]*Dir
 				
 				stat.TotalDirsObfuscated++
 				fmt.Printf("✅ 恢复目录: %s -> %s\n", dirName, newPath)
+				
+				// 更新进度信息
+				stat.CurrentProcessed++
 			} else {
 				fmt.Printf("⚠️  未找到混淆目录 %s 的映射信息\n", dirName)
 			}
@@ -1531,6 +1585,40 @@ func recoverDirs(targetDir string, config *DynamicConfig, dirMap map[string]*Dir
 
 // decryptFiles 解密文件（修改为符合新解密逻辑）
 func decryptFiles(targetDir string, key []byte, config *DynamicConfig, fileMap map[string]*FileMapItem, stat *StatData) {
+	// 首先统计需要解密的文件数量
+	var totalFiles int
+	_ = filepath.Walk(targetDir, func(root string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+		
+		filename := info.Name()
+		if filename == config.MapFilename || filename == config.LockFilename {
+			return nil
+		}
+		
+		fullPath := root
+		if isFileEncrypted(fullPath, config) && strings.HasPrefix(filename, ".") {
+			if _, exists := fileMap[filename]; exists {
+				totalFiles++
+			}
+		}
+		return nil
+	})
+	
+	// 设置总处理数量
+	stat.TotalToProcess = totalFiles
+	stat.CurrentProcessed = 0
+	stat.OperationType = "decrypt"
+	
+	// 如果没有文件需要处理，直接返回
+	if stat.TotalToProcess == 0 {
+		return
+	}
+	
 	// 递归遍历目标目录下所有文件，筛选加密文件（.开头+.dat后缀）
 	_ = filepath.Walk(targetDir, func(root string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -1585,6 +1673,9 @@ func decryptFiles(targetDir string, key []byte, config *DynamicConfig, fileMap m
 				} else {
 					stat.TotalFilesEncrypted++
 					fmt.Printf("✅ 解密文件: %s -> %s\n", filename, fileItem.Path)
+					
+					// 更新进度信息
+					stat.CurrentProcessed++
 				}
 			} else {
 				fmt.Printf("⚠️  找不到文件映射信息: %s\n", filename)
@@ -1951,6 +2042,48 @@ func safeJoin(basePath, subPath string) (string, error) {
 	}
 	
 	return joined, nil
+}
+
+// startWebUI 启动WebUI管理界面
+func startWebUI() {
+	fmt.Println("🚀 启动WebUI管理界面...")
+	server := NewWebServer("9394")
+	if err := server.Start(); err != nil && err != http.ErrServerClosed {
+		fmt.Printf("❌ WebUI服务器启动失败: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// loadMapFromFile 从文件加载映射表
+func loadMapFromFile(mapPath string) (map[string]*FileMapItem, map[string]*DirMapItem, error) {
+	fileMap := make(map[string]*FileMapItem)
+	dirMap := make(map[string]*DirMapItem)
+	
+	// 检查映射文件是否存在
+	if !isFile(mapPath) {
+		return fileMap, dirMap, nil // 返回空映射表而不是错误
+	}
+	
+	// 读取映射文件
+	data, err := os.ReadFile(mapPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("读取映射文件失败: %v", err)
+	}
+	
+	// 注意：这个函数只用于WebUI中读取未加密的映射文件
+	// 对于加密的映射文件，需要使用loadGlobalMap函数
+	
+	// 解析映射文件
+	var storedMap struct {
+		Files map[string]*FileMapItem `json:"files"`
+		Dirs  map[string]*DirMapItem  `json:"dirs"`
+	}
+	
+	if err := json.Unmarshal(data, &storedMap); err != nil {
+		return nil, nil, fmt.Errorf("解析映射文件失败: %v", err)
+	}
+	
+	return storedMap.Files, storedMap.Dirs, nil
 }
 
 

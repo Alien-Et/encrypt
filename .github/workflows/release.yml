@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Setup Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
         go-version: ${{ matrix.go-version }}
         
@@ -56,13 +56,16 @@ jobs:
         
         # Build the binary
         echo "Building ${BINARY_NAME} for ${{ matrix.platform.goos }}/${{ matrix.platform.goarch }}"
-        go build -o "${BINARY_NAME}" -ldflags "-s -w" encrypt.go help.go
+        go build -o "dist/${BINARY_NAME}" -ldflags "-s -w" encrypt.go help.go webui.go
         
         # Verify build succeeded
-        if [ ! -f "${BINARY_NAME}" ]; then
-          echo "Build failed: ${BINARY_NAME} not found"
+        if [ ! -f "dist/${BINARY_NAME}" ]; then
+          echo "Build failed: dist/${BINARY_NAME} not found"
           exit 1
         fi
+        
+        # Copy the built binary to root for artifact upload
+        cp "dist/${BINARY_NAME}" ./
       shell: bash
       
     - name: Build binary (Windows)
@@ -82,13 +85,16 @@ jobs:
         
         # Build the binary
         Write-Host "Building $BINARY_NAME for ${{ matrix.platform.goos }}/${{ matrix.platform.goarch }}"
-        go build -o "$BINARY_NAME" -ldflags "-s -w" encrypt.go help.go
+        go build -o "dist\$BINARY_NAME" -ldflags "-s -w" encrypt.go help.go webui.go
         
         # Verify build succeeded
-        if (-not (Test-Path "$BINARY_NAME")) {
-          Write-Host "Build failed: $BINARY_NAME not found"
+        if (-not (Test-Path "dist\$BINARY_NAME")) {
+          Write-Host "Build failed: dist\$BINARY_NAME not found"
           exit 1
         }
+        
+        # Copy the built binary to root for artifact upload
+        Copy-Item "dist\$BINARY_NAME" .\
       shell: pwsh
       
     - name: Upload artifact
@@ -122,6 +128,7 @@ jobs:
         # Copy config file and changelog to final release directory
         cp encrypt_config.yaml final-release/ || echo "No config file found"
         cp CHANGELOG.md final-release/ || echo "No CHANGELOG file found"
+        cp README.md final-release/ || echo "No README file found"
         
         # Create checksums
         cd final-release
@@ -130,20 +137,22 @@ jobs:
         
     - name: Get version
       id: get_version
-      run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
       
     - name: Get changelog
       id: get_changelog
       run: |
         VERSION=${{ steps.get_version.outputs.VERSION }}
         # Extract changelog for this version
-        awk "/## \[${VERSION##v}\]/,/^## \[.*\]/" CHANGELOG.md | head -n -1 > RELEASE_NOTES.md || echo "No changelog found for this version"
-        echo "::set-output name=changelog::$(cat RELEASE_NOTES.md | sed ':a;N;$!ba;s/\n/%0A/g')"
+        awk "/## \[${VERSION#v}\]/,/^## \[.*\]/" CHANGELOG.md | head -n -1 > RELEASE_NOTES.md || echo "No changelog found for this version"
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        cat RELEASE_NOTES.md >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
         
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        body: ${{ steps.get_changelog.outputs.changelog }}
+        body_path: RELEASE_NOTES.md
         files: |
           final-release/*
         draft: false

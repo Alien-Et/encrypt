@@ -6,6 +6,35 @@
 # 确保在正确的目录下执行
 cd "$(dirname "$0")"
 
+# 如果提供了参数，则只构建指定平台
+if [ $# -eq 3 ]; then
+    GOOS=$1
+    GOARCH=$2
+    OUTPUT=$3
+    
+    echo "正在构建 $GOOS $GOARCH 版本到 $OUTPUT..."
+    export CGO_ENABLED=0
+    export GO111MODULE=on
+    export GOOS="$GOOS"
+    export GOARCH="$GOARCH"
+    
+    # 针对不同平台设置特定参数
+    if [ "$GOOS" == "windows" ]; then
+        go build -o "dist/$OUTPUT" -ldflags "-s -w" encrypt.go help.go webui.go
+    else
+        go build -o "dist/$OUTPUT" -ldflags "-s -w" encrypt.go help.go webui.go
+    fi
+    
+    if [ $? -eq 0 ]; then
+        echo "✓ $GOOS $GOARCH 版本构建成功: dist/$OUTPUT"
+    else
+        echo "✗ $GOOS $GOARCH 版本构建失败"
+        exit 1
+    fi
+    
+    exit 0
+fi
+
 echo "开始打包加密工具二进制文件..."
 
 # 创建输出目录
@@ -35,9 +64,9 @@ for platform in "${platforms[@]}"; do
     
     # 针对不同平台设置特定参数
     if [ "$goos" == "windows" ]; then
-        go build -o "dist/$output" -ldflags "-s -w" encrypt.go help.go
+        go build -o "dist/$output" -ldflags "-s -w" encrypt.go help.go webui.go
     else
-        go build -o "dist/$output" -ldflags "-s -w" encrypt.go help.go
+        go build -o "dist/$output" -ldflags "-s -w" encrypt.go help.go webui.go
     fi
     
     if [ $? -eq 0 ]; then

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件加密工具 - Web管理界面</title>
+    <!-- 引入Font Awesome图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="main-header">
+            <div class="header-content">
+                <h1><i class="fas fa-lock"></i> 文件加密工具</h1>
+                <p>安全可靠的文件加密/解密解决方案</p>
+            </div>
+        </header>
+
+        <nav class="main-nav">
+            <div class="nav-toggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="#dashboard" class="nav-link active" data-tab="dashboard"><i class="fas fa-tachometer-alt"></i> 仪表板</a></li>
+                <li><a href="#config" class="nav-link" data-tab="config"><i class="fas fa-cog"></i> 配置管理</a></li>
+                <li><a href="#files" class="nav-link" data-tab="files"><i class="fas fa-table"></i> 映射表</a></li>
+            </ul>
+        </nav>
+
+        <main class="main-content">
+            <!-- 仪表板 -->
+            <section id="dashboard" class="tab-content active">
+                <div class="grid-container">
+                    <div class="card status-card">
+                        <h2><i class="fas fa-info-circle"></i> 系统状态</h2>
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <div class="status-icon">
+                                    <i class="fas fa-power-off"></i>
+                                </div>
+                                <div class="status-info">
+                                    <span class="status-label">应用状态</span>
+                                    <span id="app-status" class="status-value">未知</span>
+                                </div>
+                            </div>
+                            
+                            <div class="status-item">
+                                <div class="status-icon">
+                                    <i class="fas fa-shield-alt"></i>
+                                </div>
+                                <div class="status-info">
+                                    <span class="status-label">加密算法</span>
+                                    <span id="encrypt-algorithm" class="status-value">-</span>
+                                </div>
+                            </div>
+                            
+                            <div class="status-item">
+                                <div class="status-icon">
+                                    <i class="fas fa-folder-open"></i>
+                                </div>
+                                <div class="status-info">
+                                    <span class="status-label">目标路径数</span>
+                                    <span id="target-paths-count" class="status-value">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card operation-card">
+                        <h2><i class="fas fa-play-circle"></i> 操作控制</h2>
+                        <div class="operation-buttons">
+                            <button id="start-encrypt" class="btn btn-primary btn-lg">
+                                <i class="fas fa-lock"></i>
+                                <span class="btn-text">开始加密</span>
+                            </button>
+                            <button id="start-decrypt" class="btn btn-secondary btn-lg">
+                                <i class="fas fa-unlock"></i>
+                                <span class="btn-text">开始解密</span>
+                            </button>
+                            <button id="stop-operation" class="btn btn-danger btn-lg" disabled>
+                                <i class="fas fa-stop"></i>
+                                <span class="btn-text">停止操作</span>
+                            </button>
+                        </div>
+                        
+                        <div class="progress-section">
+                            <div class="progress-info">
+                                <span id="progress-text">等待操作...</span>
+                                <span id="progress-percent">0%</span>
+                            </div>
+                            <div class="progress-container">
+                                <div class="progress-bar">
+                                    <div id="progress-fill" class="progress-fill"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card log-card">
+                        <h2><i class="fas fa-terminal"></i> 实时日志</h2>
+                        <div class="log-controls">
+                            <button id="clear-logs" class="btn btn-outline"><i class="fas fa-trash-alt"></i> 清空日志</button>
+                            <label class="switch">
+                                <input type="checkbox" id="auto-scroll" checked>
+                                <span class="slider"></span>
+                                <span class="switch-label">自动滚动</span>
+                            </label>
+                        </div>
+                        <div id="log-container" class="log-container">
+                            <pre id="log-content" class="log-content"></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 配置管理 -->
+            <section id="config" class="tab-content">
+                <div class="card config-card">
+                    <h2><i class="fas fa-cog"></i> 配置管理</h2>
+                    <form id="config-form" class="config-form">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="password">密码</label>
+                                <div class="input-with-icon password-field">
+                                    <span class="input-icon"><i class="fas fa-key"></i></span>
+                                    <input type="password" id="password" name="password" required placeholder="请输入加密密码">
+                                    <button type="button" class="toggle-password" id="toggle-password">
+                                        <span class="eye-icon"><i class="fas fa-eye"></i></span>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="encrypt-type">加密算法</label>
+                                <div class="input-with-icon">
+                                    <span class="input-icon"><i class="fas fa-cogs"></i></span>
+                                    <select id="encrypt-type" name="encrypt_type">
+                                        <option value="aes">AES (推荐)</option>
+                                        <option value="blowfish">Blowfish</option>
+                                        <option value="xor">XOR</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group full-width">
+                                <label for="target-paths">目标路径 (每行一个)</label>
+                                <textarea id="target-paths" name="target_paths" rows="4" placeholder="例: /home/user/Documents&#10;/home/user/Pictures"></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="obfuscate-suffix">混淆文件名后缀</label>
+                                <div class="input-with-icon">
+                                    <span class="input-icon"><i class="fas fa-file"></i></span>
+                                    <input type="text" id="obfuscate-suffix" name="obfuscate_suffix" value=".dat">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="map-storage-path">映射文件存储路径</label>
+                                <div class="input-with-icon">
+                                    <span class="input-icon"><i class="fas fa-save"></i></span>
+                                    <input type="text" id="map-storage-path" name="map_storage_path" placeholder="留空使用默认路径">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="button" id="load-config" class="btn btn-outline"><i class="fas fa-download"></i> 加载配置</button>
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> 保存配置</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- 映射表 -->
+            <section id="files" class="tab-content">
+                <div class="card files-card">
+                    <div class="files-header">
+                        <h2><i class="fas fa-table"></i> 映射表</h2>
+                        <button id="refresh-files" class="btn btn-outline"><i class="fas fa-sync-alt"></i> 刷新列表</button>
+                    </div>
+                    <div class="file-list-container">
+                        <div class="table-responsive">
+                            <table id="file-list" class="file-table">
+                                <thead>
+                                    <tr>
+                                        <th>原始路径</th>
+                                        <th>加密路径</th>
+                                        <th>大小</th>
+                                        <th>修改时间</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 文件列表将通过JavaScript动态填充 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="main-footer">
+            <p>&copy; 2025 文件加密工具. 所有权利保留.</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/script.js"></script>
+</body>
+</html>
