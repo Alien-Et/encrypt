@@ -39,19 +39,19 @@ chmod +x build.sh
 ### 查看帮助文档
 
 ```bash
-./dist/encrypt-linux-amd64 -h
+./encrypt-linux-amd64 -h
 ```
 
 或者：
 
 ```bash
-./dist/encrypt-linux-amd64 --help
+./encrypt-linux-amd64 --help
 ```
 
 ### 启动Web管理界面
 
 ```bash
-./dist/encrypt-linux-amd64 -webui
+./encrypt-linux-amd64 -webui
 ```
 
 默认监听端口为 9394，可通过浏览器访问 http://localhost:9394
@@ -62,19 +62,19 @@ chmod +x build.sh
 
 1. **加密模式**：
 ```bash
-./dist/encrypt-linux-amd64 -encrypt
+./encrypt-linux-amd64 -encrypt
 ```
 执行加密操作，根据配置文件中的设置加密指定目录中的文件。
 
 2. **解密模式**：
 ```bash
-./dist/encrypt-linux-amd64 -decrypt
+./encrypt-linux-amd64 -decrypt
 ```
 执行解密操作，根据配置文件中的设置解密指定目录中的文件。
 
 3. **WebUI模式**：
 ```bash
-./dist/encrypt-linux-amd64 -webui
+./encrypt-linux-amd64 -webui
 ```
 启动Web管理界面，默认监听端口9394。
 
@@ -119,13 +119,13 @@ debug: false
 ### 加密文件/目录
 
 ```bash
-./dist/encrypt-linux-amd64 -encrypt
+./encrypt-linux-amd64 -encrypt
 ```
 
 ### 解密文件/目录
 
 ```bash
-./dist/encrypt-linux-amd64 -decrypt
+./encrypt-linux-amd64 -decrypt
 ```
 
 ## Web管理界面
@@ -456,7 +456,7 @@ go get -u gopkg.in/yaml.v2
 - 提供Web管理界面
 - 支持RESTful API接口
 
-### v1.1.0
+### v1.0.0
 - 增强WebUI界面，提供更现代化的用户体验
 - 实现实时进度跟踪功能，准确显示操作进度
 - 支持文件映射表管理和预览功能
