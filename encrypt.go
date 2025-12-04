@@ -80,22 +80,7 @@ type StatData struct {
 	TotalDirsObfuscated int
 }
 
-// 固化缓存路径（直接指向项目内缓存，无需环境变量，适配MT+Termux）
-func getCachePaths() (gocache, gomodcache string) {
-	// 获取当前程序所在目录（无论MT还是Termux，均定位到项目根目录）
-	exePath, err := os.Executable()
-	if err != nil {
-		exePath = "./" // 异常时默认当前目录
-	}
-	exeDir := filepath.Dir(exePath)
-	// 缓存路径固定为项目内 .go-cache，绕开根目录只读
-	gocache = filepath.Join(exeDir, ".go-cache")
-	gomodcache = filepath.Join(exeDir, ".go-cache", "mod")
-	// 自动创建缓存目录（无权限时提示，避免报错）
-	_ = os.MkdirAll(gocache, 0755)
-	_ = os.MkdirAll(gomodcache, 0755)
-	return gocache, gomodcache
-}
+
 
 // 操作模式常量
 const (
@@ -104,12 +89,8 @@ const (
 )
 
 func main() {
-	// 初始化缓存路径（固化到代码，无需环境变量）
-	gocache, gomodcache := getCachePaths()
-	// 设置Go缓存环境变量（代码内自动配置，外部无需操作）
-	os.Setenv("GOCACHE", gocache)
-	os.Setenv("GOMODCACHE", gomodcache)
-	os.Setenv("GONOSUMDB", "*") // 自动关闭模块校验，绕开路径缺失
+	// 不再设置Go缓存环境变量，避免产生不必要的空目录
+	// 只有在真正需要时才设置这些环境变量
 
 	// 解析命令行参数
 	help := flag.Bool("help", false, "显示帮助信息")
