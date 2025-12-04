@@ -1,27 +1,20 @@
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
+# 更新日志
 
 ## [1.0.0] - 2025-12-04
 
-### Added
-- Initial release of the encryption tool
-- Cross-platform support (Linux, Windows, macOS, Android)
-- Multiple encryption algorithms (AES, Blowfish, XOR)
-- YAML configuration file support
-- Automated build and release workflow
-- Command-line interface with encrypt/decrypt modes
+### 新增
+- 加密工具的初始版本发布
+- 跨平台支持 (Linux, Windows, macOS, Android)
+- 多种加密算法支持 (AES, Blowfish, XOR)
+- YAML 配置文件支持
+- 自动化构建和发布工作流
+- 带有加密/解密模式的命令行界面
 
-### Changed
-- Improved security with PBKDF2 key derivation
-- Enhanced file and directory handling
-- Better error handling and user feedback
+### 更改
+- 使用 PBKDF2 密钥派生提高安全性
+- 增强的文件和目录处理能力
+- 更好的错误处理和用户反馈
 
-### Fixed
-- Configuration file generation and validation
-- Directory traversal and mapping issues
+### 修复
+- 配置文件生成和验证问题
+- 目录遍历和映射问题
