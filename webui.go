@@ -879,6 +879,97 @@ func saveConfig(config *DynamicConfig) error {
 	return encoder.Encode(config)
 }
 
+// loadGlobalMapWithSalt 加载全局映射表并返回盐值
+func loadGlobalMapWithSalt(key []byte, config *DynamicConfig, fileMap *map[string]*FileMapItem, dirMap *map[string]*DirMapItem, salt *string) []byte {
+	mapPath := filepath.Join(config.MapStoragePath, config.MapFilename)
+	if !isFile(mapPath) {
+		fmt.Printf("⚠️  映射表文件不存在: %s\n", mapPath)
+		return key
+	}
+
+	// 读取映射表文件
+	encryptedData, err := os.ReadFile(mapPath)
+	if err != nil {
+		fmt.Printf("❌ 读取映射表文件失败: %v\n", err)
+		return key
+	}
+	fmt.Printf("📂 尝试加载映射表文件: %s\n", mapPath)
+	fmt.Printf("📄 读取映射表文件成功，大小: %d 字节\n", len(encryptedData))
+
+	// 解密映射表数据
+	decryptedData, err := decryptMapData(encryptedData, key)
+	if err != nil {
+		fmt.Printf("❌ 解密映射表数据失败: %v\n", err)
+		return key
+	}
+	fmt.Printf("🔓 解密映射表数据成功，大小: %d 字节\n", len(decryptedData))
+
+	// 解析JSON数据
+	var mapData struct {
+		Files map[string]*FileMapItem `json:"files"`
+		Dirs  map[string]*DirMapItem  `json:"dirs"`
+		Salt  string                  `json:"salt,omitempty"`
+	}
+
+	if err := json.Unmarshal(decryptedData, &mapData); err != nil {
+		fmt.Printf("❌ 解析映射表JSON失败: %v\n", err)
+		return key
+	}
+	fmt.Printf("📋 解析映射表JSON成功，条目数: %d\n", len(mapData.Files)+len(mapData.Dirs))
+
+	// 设置盐值
+	*salt = mapData.Salt
+	fmt.Printf("🔑 提取到盐值: %s\n", mapData.Salt)
+
+	// 如果映射表中有盐值，重新生成密钥
+	if mapData.Salt != "" {
+		fmt.Printf("🔑 提取到盐值: %s\n", mapData.Salt)
+		newKey, err := generateEncryptKey(config.Password, config.EncryptType, mapData.Salt)
+		if err != nil {
+			fmt.Printf("❌ 使用映射表中的盐值重新生成密钥失败: %v\n", err)
+		} else {
+			fmt.Printf("🔄 新密钥已生成，长度: %d 字节\n", len(newKey))
+			key = newKey
+		}
+	}
+
+	// 更新映射表
+	fmt.Printf("📊 loadGlobalMap: 更新前文件映射数量: %d\n", len(*fileMap))
+	fmt.Printf("📊 loadGlobalMap: 更新前目录映射数量: %d\n", len(*dirMap))
+	*fileMap = mapData.Files
+	*dirMap = mapData.Dirs
+	fmt.Printf("📊 loadGlobalMap: 更新后文件映射数量: %d\n", len(*fileMap))
+	fmt.Printf("📊 loadGlobalMap: 更新后目录映射数量: %d\n", len(*dirMap))
+
+	// 打印加载的映射信息（限制数量以避免过多输出）
+	fileCount := 0
+	for k, v := range *fileMap {
+		if fileCount < 20 { // 只显示前20个
+			fmt.Printf("📄 加载文件映射: %s -> %s (MD5: %s)\n", k, v.Path, v.Md5)
+		} else if fileCount == 20 {
+			fmt.Printf("📄 ... (还有 %d 个文件映射)\n", len(*fileMap)-20)
+			break
+		}
+		fileCount++
+	}
+
+	dirCount := 0
+	for k, v := range *dirMap {
+		if dirCount < 10 { // 只显示前10个
+			fmt.Printf("📁 加载目录映射: %s -> %s\n", k, v.OriginalPath)
+		} else if dirCount == 10 {
+			fmt.Printf("📁 ... (还有 %d 个目录映射)\n", len(*dirMap)-10)
+			break
+		}
+		dirCount++
+	}
+
+	fmt.Printf("📄 加载文件映射: %d 项\n", len(*fileMap))
+	fmt.Printf("📁 加载目录映射: %d 项\n", len(*dirMap))
+
+	return key
+}
+
 // getEncryptedFiles gets a list of encrypted files, organized by target paths
 func getEncryptedFiles() ([]map[string]interface{}, error) {
 	// Load config to get target paths and map storage path
@@ -889,6 +980,7 @@ func getEncryptedFiles() ([]map[string]interface{}, error) {
 	}
 
 	var files []map[string]interface{}
+	var salt string // 用于存储盐值
 
 	fmt.Printf("[DEBUG] MapStoragePath: %s, MapFilename: %s\n", config.MapStoragePath, config.MapFilename)
 
@@ -911,8 +1003,8 @@ func getEncryptedFiles() ([]map[string]interface{}, error) {
 				return nil, err
 			}
 			
-			// Load the mapping file using the proper decryption method
-			key = loadGlobalMap(key, config, &globalFileMap, &globalDirMap)
+			// Load the mapping file using the proper decryption method and extract salt
+			key = loadGlobalMapWithSalt(key, config, &globalFileMap, &globalDirMap, &salt)
 			fmt.Printf("[DEBUG] 成功加载映射文件，文件数量: %d\n", len(globalFileMap))
 			
 			// Group files by target directory
@@ -925,6 +1017,7 @@ func getEncryptedFiles() ([]map[string]interface{}, error) {
 					"encrypted_path": item.Path,
 					"target_dir":     item.TargetDir,
 					"md5":            item.Md5,
+					"salt":           salt, // 添加盐值信息
 				}
 				
 				// Get file stats if the encrypted file exists
@@ -963,7 +1056,6 @@ func getEncryptedFiles() ([]map[string]interface{}, error) {
 	fmt.Printf("[DEBUG] 返回文件数量: %d\n", len(files))
 	return files, nil
 }
-
 // startEncryption starts the encryption process
 func startEncryption() {
 	// 广播日志消息

@@ -490,7 +490,7 @@ body {
 }
 
 .table-responsive {
-    overflow-x: auto;
+    overflow-x: hidden;
 }
 
 .file-table {
@@ -499,13 +499,17 @@ body {
     background: white;
     border-radius: 10px;
     overflow: hidden;
+    table-layout: fixed;
 }
 
 .file-table th,
 .file-table td {
-    padding: 15px;
+    padding: 12px 8px;
     text-align: left;
     border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .file-table th {
@@ -641,6 +645,22 @@ body {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* 表格列宽设置 */
+.file-table th:nth-child(1),
+.file-table td:nth-child(1) { width: 25%; }
+
+.file-table th:nth-child(2),
+.file-table td:nth-child(2) { width: 25%; }
+
+.file-table th:nth-child(3),
+.file-table td:nth-child(3) { width: 20%; }
+
+.file-table th:nth-child(4),
+.file-table td:nth-child(4) { width: 15%; }
+
+.file-table th:nth-child(5),
+.file-table td:nth-child(5) { width: 15%; }
 
 /* 响应式设计 */
 @media (max-width: 768px) {

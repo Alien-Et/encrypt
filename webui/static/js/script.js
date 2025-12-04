@@ -270,7 +270,7 @@ async function loadFileList() {
                     // Add group header
                     const groupHeader = document.createElement('tr');
                     groupHeader.className = 'file-group-header';
-                    groupHeader.innerHTML = `<td colspan="4"><strong>📁 目标路径: ${escapeHtml(targetDir)}</strong></td>`;
+                    groupHeader.innerHTML = `<td colspan="5"><strong>📁 目标路径: ${escapeHtml(targetDir)}</strong></td>`;
                     fileListBody.appendChild(groupHeader);
                     
                     // Add files in this group
@@ -279,15 +279,16 @@ async function loadFileList() {
                         row.innerHTML = `
                             <td style="padding-left: 20px;">${escapeHtml(file.original_path || '-')}</td>
                             <td>${escapeHtml(file.encrypted_path || '-')}</td>
-                            <td>${formatFileSize(file.size || 0)}</td>
-                            <td>${file.modified || '-'}</td>
+                            <td>${file.md5 || '-'}</td>
+                            <td>${escapeHtml(file.target_dir || '-')}</td>
+                            <td>${file.salt ? file.salt.substring(0, 8) + '...' : '-'}</td>
                         `;
                         fileListBody.appendChild(row);
                     });
                 });
             } else {
                 const row = document.createElement('tr');
-                row.innerHTML = '<td colspan="4" style="text-align: center;">暂无加密文件</td>';
+                row.innerHTML = '<td colspan="5" style="text-align: center;">暂无加密文件</td>';
                 fileListBody.appendChild(row);
             }
         }
@@ -302,10 +303,6 @@ async function loadFileList() {
 
 // 开始加密
 async function startEncryption() {
-    if (!confirm('确定要开始加密吗？')) {
-        return;
-    }
-    
     try {
         showLoading(true);
         updateOperationButtons(true);
@@ -334,10 +331,6 @@ async function startEncryption() {
 
 // 开始解密
 async function startDecryption() {
-    if (!confirm('确定要开始解密吗？这将还原所有加密文件。')) {
-        return;
-    }
-    
     try {
         showLoading(true);
         updateOperationButtons(true);
@@ -425,6 +418,10 @@ function startProgressTracking() {
                     updateOperationButtons(false);
                     updateProgress(100, '操作完成');
                     showMessage(`${currentOperation === 'encrypt' ? '加密' : '解密'}完成`, 'success');
+                    
+                    // 操作完成后刷新文件列表
+                    loadFileList();
+                    
                     currentOperation = null;
                     return;
                 }
@@ -439,6 +436,11 @@ function startProgressTracking() {
                 if (percent > 100) percent = 100;
                 
                 updateProgress(percent, `${currentOperation === 'encrypt' ? '加密' : '解密'}进行中... (${progressData.current_processed}/${progressData.total_to_process})`);
+                
+                // 每5秒刷新一次文件列表以实现实时更新
+                if (progressData.current_processed % 5 === 0) {
+                    loadFileList();
+                }
             }
         } catch (error) {
             console.error('获取进度信息失败:', error);
