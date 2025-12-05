@@ -401,12 +401,54 @@ body {
     white-space: pre-wrap;
 }
 
-/* 配置卡片 */
-.config-card .form-grid {
+/* 配置卡片网格 */
+.cards-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 20px;
-    margin-bottom: 30px;
+    gap: 25px;
+    margin-bottom: 25px;
+}
+
+/* 配置卡片项 */
+.config-card-item {
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 15px;
+    padding: 25px;
+    box-shadow: var(--shadow);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    backdrop-filter: blur(5px);
+}
+
+.config-card-item:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-lg);
+}
+
+.config-card-item.full-width {
+    grid-column: 1 / -1;
+}
+
+/* 卡片头部 */
+.config-card-item h3 {
+    color: var(--primary-color);
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid var(--light-color);
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.config-card-item h3 i {
+    margin-right: 10px;
+}
+
+/* 卡片主体 */
+.card-body {
+    padding: 0;
+}
+
+.card-body .form-group:last-child {
+    margin-bottom: 0;
 }
 
 .form-group {
