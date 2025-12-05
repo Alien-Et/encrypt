@@ -1,0 +1,9 @@
+password: jkghjkGHHGfhggch41
+encrypt_type: aes
+target_paths:
+- /persistent/home/andy/Wallpapers
+obfuscate_suffix: .dat
+obfuscate_name_length: 12
+map_filename: .app_encrypt
+lock_filename: .encrypt.lock
+map_storage_path: /home/andy/encrypt/dist/tmp

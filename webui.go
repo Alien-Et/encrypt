@@ -133,10 +133,24 @@ func (ws *WebServer) IsRunning() bool {
 
 // serveIndex serves the main HTML page
 func (ws *WebServer) serveIndex(w http.ResponseWriter, r *http.Request) {
-	// If webui directory doesn't exist, create a simple UI
-	webuiDir := "webui"
-	if _, err := os.Stat(webuiDir); os.IsNotExist(err) {
-		// Create a simple HTML page
+	// If requesting the root path, serve index.html
+	if r.URL.Path == "/" || r.URL.Path == "" {
+		// Try to serve index.html from embedded filesystem first
+		indexData, err := webuiFiles.ReadFile("webui/index.html")
+		if err == nil {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(indexData)
+			return
+		}
+		
+		// If webui/index.html exists, serve it
+		indexPath := filepath.Join("webui", "index.html")
+		if _, err := os.Stat(indexPath); err == nil {
+			http.ServeFile(w, r, indexPath)
+			return
+		}
+		
+		// Fallback to simple UI
 		html := `<!DOCTYPE html>
 <html>
 <head>
@@ -294,177 +308,43 @@ func (ws *WebServer) serveIndex(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, html)
 		return
 	}
-
-	// Try to serve index.html from embedded filesystem first
-	indexData, err := webuiFiles.ReadFile("webui/index.html")
-	if err == nil {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(indexData)
-		return
+	
+	// Handle static files
+	// Try embedded filesystem first
+	if strings.HasPrefix(r.URL.Path, "/static/") {
+		filePath := filepath.Join("webui", r.URL.Path[1:]) // Remove leading slash
+		data, err := webuiFiles.ReadFile(filePath)
+		if err == nil {
+			// Set appropriate content type
+			contentType := "application/octet-stream"
+			ext := filepath.Ext(filePath)
+			switch ext {
+			case ".css":
+				contentType = "text/css"
+			case ".js":
+				contentType = "application/javascript"
+			case ".html":
+				contentType = "text/html"
+			case ".png", ".jpg", ".jpeg", ".gif", ".ico":
+				contentType = "image/" + strings.TrimPrefix(ext, ".")
+			}
+			w.Header().Set("Content-Type", contentType)
+			w.Write(data)
+			return
+		}
 	}
 	
-	// If webui/index.html exists, serve it
-	indexPath := filepath.Join(webuiDir, "index.html")
-	if _, err := os.Stat(indexPath); err == nil {
-		http.ServeFile(w, r, indexPath)
-		return
+	// Try to serve static files from disk
+	if strings.HasPrefix(r.URL.Path, "/static/") {
+		staticPath := filepath.Join("webui", r.URL.Path[1:]) // Remove leading slash
+		if _, err := os.Stat(staticPath); err == nil {
+			http.ServeFile(w, r, staticPath)
+			return
+		}
 	}
-	// Fallback to simple UI
-	html := `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>文件加密工具 - Web管理界面</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f5f5f5; }
-        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; text-align: center; }
-        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
-        button { background-color: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 4px; }
-        button:hover { background-color: #0056b3; }
-        input, select, textarea { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; }
-        label { font-weight: bold; }
-        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
-        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .file-list { max-height: 300px; overflow-y: auto; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🔒 文件加密工具 - Web管理界面</h1>
-        
-        <div class="section">
-            <h2>应用查看</h2>
-            <button onclick="checkStatus()">检查应用状态</button>
-            <div id="statusResult"></div>
-        </div>
-        
-        <div class="section">
-            <h2>配置管理</h2>
-            <button onclick="loadConfig()">加载配置</button>
-            <button onclick="saveConfig()">保存配置</button>
-            <div id="configForm"></div>
-        </div>
-        
-        <div class="section">
-            <h2>文件操作</h2>
-            <button onclick="listFiles()">查看加密文件</button>
-            <button onclick="startEncrypt()">开始加密</button>
-            <button onclick="startDecrypt()">开始解密</button>
-            <div id="filesList" class="file-list"></div>
-        </div>
-    </div>
-
-    <script>
-        function checkStatus() {
-            fetch('/api/status')
-                .then(response => response.json())
-                .then(data => {
-                    const resultDiv = document.getElementById('statusResult');
-                    resultDiv.innerHTML = '<div class="status success">应用状态: 运行中</div>';
-                })
-                .catch(error => {
-                    const resultDiv = document.getElementById('statusResult');
-                    resultDiv.innerHTML = '<div class="status error">应用状态: 未运行</div>';
-                });
-        }
-
-        function loadConfig() {
-            fetch('/api/config')
-                .then(response => response.json())
-                .then(data => {
-                    // Display config form
-                    const formHtml = '
-                        <label>密码:</label>\n
-                        <input type="password" id="password" value="'+(data.password || '')+'">\n
-                        \n
-                        <label>加密算法:</label>\n
-                        <select id="encryptType">\n
-                            <option value="aes" '+(data.encrypt_type === 'aes' ? 'selected' : '')+'>AES</option>\n
-                            <option value="blowfish" '+(data.encrypt_type === 'blowfish' ? 'selected' : '')+'>Blowfish</option>\n
-                            <option value="xor" '+(data.encrypt_type === 'xor' ? 'selected' : '')+'>XOR</option>\n
-                        </select>\n
-                        \n
-                        <label>目标路径 (每行一个):</label>\n
-                        <textarea id="targetPaths" rows="4">'+(data.target_paths ? data.target_paths.join('\n') : '')+'</textarea>\n
-                    ';
-                    document.getElementById('configForm').innerHTML = formHtml;
-                })
-                .catch(error => {
-                    alert('加载配置失败: ' + error);
-                });
-        }
-
-        function saveConfig() {
-            const config = {
-                password: document.getElementById('password').value,
-                encrypt_type: document.getElementById('encryptType').value,
-                target_paths: document.getElementById('targetPaths').value.split('\n').filter(p => p.trim() !== '')
-            };
-
-            fetch('/api/config', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(config)
-            })
-            .then(response => response.json())
-            .then(data => {
-                alert('配置保存成功');
-            })
-            .catch(error => {
-                alert('保存配置失败: ' + error);
-            });
-        }
-
-        function listFiles() {
-            fetch('/api/files')
-                .then(response => response.json())
-                .then(data => {
-                    let html = '<h3>加密文件列表:</h3><ul>';
-                    data.files.forEach(file => {
-                        html += '<li>'+file.original_path+' -> '+file.encrypted_path+' ('+file.size+' bytes)</li>';
-                    });
-                    html += '</ul>';
-                    document.getElementById('filesList').innerHTML = html;
-                })
-                .catch(error => {
-                    alert('获取文件列表失败: ' + error);
-                });
-        }
-
-        function startEncrypt() {
-            if (confirm('确定要开始加密吗？')) {
-                fetch('/api/start?mode=encrypt', { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        alert('加密任务已启动');
-                    })
-                    .catch(error => {
-                        alert('启动加密失败: ' + error);
-                    });
-            }
-        }
-
-        function startDecrypt() {
-            if (confirm('确定要开始解密吗？这将还原所有加密文件。')) {
-                fetch('/api/start?mode=decrypt', { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        alert('解密任务已启动');
-                    })
-                    .catch(error => {
-                        alert('启动解密失败: ' + error);
-                    });
-            }
-        }
-    </script>
-</body>
-</html>`
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, html)
+	
+	// If we get here, the file was not found
+	http.NotFound(w, r)
 }
 
 // handleConfig handles configuration API requests
@@ -1216,7 +1096,7 @@ func decryptAES(encryptedData, key []byte) ([]byte, error) {
 
 	// Ensure key size is correct for AES
 	if len(actualKey) > AESKeySize {
-		actualKey = actualKey[:AESKeySize] // Trim to 32 bytes for AES-256
+		actualKey = actualKey[:AESKeySize] // Trim to 32 bytes for AES-226
 	}
 
 	// Create cipher
@@ -1383,3 +1263,5 @@ func startDecryption() {
 	currentProgress.IsRunning = false
 	progressMutex.Unlock()
 }
+
+

@@ -50,6 +50,11 @@ function initTabs() {
                 content.classList.remove('active');
                 if (content.id === tabId) {
                     content.classList.add('active');
+                    
+                    // 如果切换到映射表标签页，立即刷新一次
+                    if (tabId === 'files') {
+                        loadFileList();
+                    }
                 }
             });
             
@@ -270,24 +275,27 @@ async function loadFileList() {
                     // Add group header
                     const groupHeader = document.createElement('tr');
                     groupHeader.className = 'file-group-header';
-                    groupHeader.innerHTML = `<td colspan="4"><strong>📁 目标路径: ${escapeHtml(targetDir)}</strong></td>`;
+                    groupHeader.innerHTML = `<td colspan="5"><strong>📁 目标路径: ${escapeHtml(targetDir)}</strong></td>`;
                     fileListBody.appendChild(groupHeader);
                     
                     // Add files in this group
                     groupedFiles[targetDir].forEach(file => {
                         const row = document.createElement('tr');
+                        // 获取盐值，如果不存在则显示"-"
+                        const saltValue = file.salt || '-';
                         row.innerHTML = `
                             <td style="padding-left: 20px;">${escapeHtml(file.original_path || '-')}</td>
                             <td>${escapeHtml(file.encrypted_path || '-')}</td>
-                            <td>${formatFileSize(file.size || 0)}</td>
-                            <td>${file.modified || '-'}</td>
+                            <td>${file.md5 || '-'}</td>
+                            <td>${saltValue}</td>
+                            <td>${file.target_dir || '-'}</td>
                         `;
                         fileListBody.appendChild(row);
                     });
                 });
             } else {
                 const row = document.createElement('tr');
-                row.innerHTML = '<td colspan="4" style="text-align: center;">暂无加密文件</td>';
+                row.innerHTML = '<td colspan="5" style="text-align: center;">暂无加密文件</td>';
                 fileListBody.appendChild(row);
             }
         }
@@ -302,10 +310,6 @@ async function loadFileList() {
 
 // 开始加密
 async function startEncryption() {
-    if (!confirm('确定要开始加密吗？')) {
-        return;
-    }
-    
     try {
         showLoading(true);
         updateOperationButtons(true);
@@ -334,10 +338,6 @@ async function startEncryption() {
 
 // 开始解密
 async function startDecryption() {
-    if (!confirm('确定要开始解密吗？这将还原所有加密文件。')) {
-        return;
-    }
-    
     try {
         showLoading(true);
         updateOperationButtons(true);
@@ -426,19 +426,27 @@ function startProgressTracking() {
                     updateProgress(100, '操作完成');
                     showMessage(`${currentOperation === 'encrypt' ? '加密' : '解密'}完成`, 'success');
                     currentOperation = null;
+                    
+                    // 在操作完成后刷新映射表
+                    loadFileList();
                     return;
                 }
                 
-                // 计算进度百分比
+                // 显示文件数量进度而不是百分比
+                const currentProcessed = progressData.current_processed;
+                const totalToProcess = progressData.total_to_process;
+                
+                // 更新进度条（仍然使用百分比来填充进度条，但显示文本改为文件数量）
                 let percent = 0;
-                if (progressData.total_to_process > 0) {
-                    percent = (progressData.current_processed / progressData.total_to_process) * 100;
+                if (totalToProcess > 0) {
+                    percent = (currentProcessed / totalToProcess) * 100;
                 }
                 
                 // 确保进度不超过100%
                 if (percent > 100) percent = 100;
                 
-                updateProgress(percent, `${currentOperation === 'encrypt' ? '加密' : '解密'}进行中... (${progressData.current_processed}/${progressData.total_to_process})`);
+                // 更新进度显示文本为文件数量格式
+                updateProgress(percent, `${currentOperation === 'encrypt' ? '加密' : '解密'}进行中... (${currentProcessed}/${totalToProcess})`);
             }
         } catch (error) {
             console.error('获取进度信息失败:', error);
@@ -468,7 +476,17 @@ function updateProgress(percent, text) {
         progressFill.style.width = percent + '%';
     }
     if (progressText) progressText.textContent = text;
-    if (progressPercent) progressPercent.textContent = Math.round(percent) + '%';
+    if (progressPercent) {
+        // 不显示百分比数值，或者显示文件数量进度
+        const match = text.match(/\((\d+)\/(\d+)\)/);
+        if (match) {
+            // 如果文本中包含文件数量信息，只显示这部分
+            progressPercent.textContent = `${match[1]}/${match[2]}`;
+        } else {
+            // 否则隐藏百分比显示
+            progressPercent.textContent = '';
+        }
+    }
 }
 
 // 开始日志流

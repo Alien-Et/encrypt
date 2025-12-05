@@ -529,6 +529,32 @@ body {
     font-size: 0.95rem;
 }
 
+/* 确保所有列都有相同的间距 */
+.file-table th:nth-child(1),
+.file-table td:nth-child(1) {
+    width: 20%;
+}
+
+.file-table th:nth-child(2),
+.file-table td:nth-child(2) {
+    width: 20%;
+}
+
+.file-table th:nth-child(3),
+.file-table td:nth-child(3) {
+    width: 20%;
+}
+
+.file-table th:nth-child(4),
+.file-table td:nth-child(4) {
+    width: 20%;
+}
+
+.file-table th:nth-child(5),
+.file-table td:nth-child(5) {
+    width: 20%;
+}
+
 /* 底部 */
 .main-footer {
     text-align: center;
