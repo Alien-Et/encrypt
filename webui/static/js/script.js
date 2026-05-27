@@ -1,210 +1,156 @@
-// 全局变量
-let logStream = null;
+
 let currentOperation = null;
 let progressInterval = null;
+let logStream = null;
+let currentFiles = [];
 
-// DOM加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
-    // 初始化标签页切换
     initTabs();
-    
-    // 初始化事件监听器
     initEventListeners();
-    
-    // 初始化移动端导航
-    initMobileNav();
-    
-    // 初始化密码查看功能
-    initPasswordToggle();
-    
-    // 检查应用状态
     checkAppStatus();
-    
-    // 加载配置
     loadConfig();
-    
-    // 加载文件列表
     loadFileList();
-    
-    // 开始日志流
     startLogStream();
 });
 
-// 初始化标签页切换
 function initTabs() {
-    const tabLinks = document.querySelectorAll('.nav-link[data-tab]');
+    const tabButtons = document.querySelectorAll('.nav-item[data-tab]');
     const tabContents = document.querySelectorAll('.tab-content');
     
-    tabLinks.forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            
+    tabButtons.forEach(button => {
+        button.addEventListener('click', function() {
             const tabId = this.getAttribute('data-tab');
             
-            // 更新活动标签
-            tabLinks.forEach(l => l.classList.remove('active'));
+            tabButtons.forEach(btn => btn.classList.remove('active'));
             this.classList.add('active');
             
-            // 显示对应内容
             tabContents.forEach(content => {
                 content.classList.remove('active');
                 if (content.id === tabId) {
                     content.classList.add('active');
-                    
-                    // 如果切换到映射表标签页，立即刷新一次
                     if (tabId === 'files') {
                         loadFileList();
                     }
                 }
             });
-            
-            // 关闭移动端菜单
-            const navMenu = document.querySelector('.nav-menu');
-            navMenu.classList.remove('active');
         });
     });
 }
 
-// 初始化移动端导航
-function initMobileNav() {
-    const navToggle = document.querySelector('.nav-toggle');
-    const navMenu = document.querySelector('.nav-menu');
-    
-    if (navToggle && navMenu) {
-        navToggle.addEventListener('click', function() {
-            navMenu.classList.toggle('active');
-        });
-    }
-}
-
-// 初始化事件监听器
 function initEventListeners() {
-    // 配置表单提交
     const configForm = document.getElementById('config-form');
     if (configForm) {
         configForm.addEventListener('submit', saveConfig);
     }
     
-    // 加载配置按钮
     const loadConfigBtn = document.getElementById('load-config');
     if (loadConfigBtn) {
         loadConfigBtn.addEventListener('click', loadConfig);
     }
     
-    // 刷新文件列表按钮
+    const togglePasswordBtn = document.getElementById('toggle-password');
+    if (togglePasswordBtn) {
+        togglePasswordBtn.addEventListener('click', togglePasswordVisibility);
+    }
+    
     const refreshFilesBtn = document.getElementById('refresh-files');
     if (refreshFilesBtn) {
         refreshFilesBtn.addEventListener('click', loadFileList);
     }
     
-    // 开始加密按钮
     const startEncryptBtn = document.getElementById('start-encrypt');
     if (startEncryptBtn) {
         startEncryptBtn.addEventListener('click', startEncryption);
     }
     
-    // 开始解密按钮
     const startDecryptBtn = document.getElementById('start-decrypt');
     if (startDecryptBtn) {
         startDecryptBtn.addEventListener('click', startDecryption);
     }
     
-    // 停止操作按钮
     const stopOperationBtn = document.getElementById('stop-operation');
     if (stopOperationBtn) {
         stopOperationBtn.addEventListener('click', stopOperation);
     }
     
-    // 清空日志按钮
     const clearLogsBtn = document.getElementById('clear-logs');
     if (clearLogsBtn) {
         clearLogsBtn.addEventListener('click', clearLogs);
     }
-}
-
-// 初始化密码查看功能
-function initPasswordToggle() {
-    const toggleButton = document.getElementById('toggle-password');
-    const passwordInput = document.getElementById('password');
     
-    if (toggleButton && passwordInput) {
-        toggleButton.addEventListener('click', function() {
-            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-            passwordInput.setAttribute('type', type);
-            
-            // 更新眼睛图标
-            const eyeIcon = this.querySelector('.eye-icon i');
-            if (eyeIcon) {
-                if (type === 'password') {
-                    eyeIcon.className = 'fas fa-eye';
-                } else {
-                    eyeIcon.className = 'fas fa-eye-slash';
-                }
-            }
-        });
+    const searchInput = document.getElementById('search-files');
+    if (searchInput) {
+        searchInput.addEventListener('input', filterFiles);
     }
 }
 
-// 检查应用状态
+function togglePasswordVisibility() {
+    const passwordInput = document.getElementById('password');
+    const icon = this.querySelector('i');
+    
+    if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        icon.className = 'fas fa-eye-slash';
+    } else {
+        passwordInput.type = 'password';
+        icon.className = 'fas fa-eye';
+    }
+}
+
 async function checkAppStatus() {
     try {
         const response = await fetch('/api/status');
         const data = await response.json();
-        
-        const statusElement = document.getElementById('app-status');
+        const statusElement = document.getElementById('header-status');
         if (statusElement) {
-            statusElement.textContent = data.status === 'running' ? '运行中' : '已停止';
-            statusElement.className = 'status-value ' + (data.status === 'running' ? 'running' : 'stopped');
+            statusElement.textContent = data.status === 'running' ? '运行中' : '准备就绪';
         }
     } catch (error) {
-        console.error('检查应用状态失败:', error);
+        console.error('检查状态失败:', error);
     }
 }
 
-// 加载配置
 async function loadConfig() {
     try {
-        showLoading(true);
-        
         const response = await fetch('/api/config');
         const config = await response.json();
         
-        // 填充表单字段
-        document.getElementById('password').value = config.password || '';
-        document.getElementById('encrypt-type').value = config.encrypt_type || 'aes';
-        document.getElementById('target-paths').value = (config.target_paths || []).join('\n');
-        document.getElementById('obfuscate-suffix').value = config.obfuscate_suffix || '.dat';
-        document.getElementById('map-storage-path').value = config.map_storage_path || '';
+        const passwordInput = document.getElementById('password');
+        if (passwordInput) passwordInput.value = config.password || '';
         
-        // 更新状态显示
+        const encryptType = document.getElementById('encrypt-type');
+        if (encryptType) encryptType.value = config.encrypt_type || 'aes';
+        
+        const targetPaths = document.getElementById('target-paths');
+        if (targetPaths) targetPaths.value = (config.target_paths || []).join('\n');
+        
+        const obfuscateSuffix = document.getElementById('obfuscate-suffix');
+        if (obfuscateSuffix) obfuscateSuffix.value = config.obfuscate_suffix || '.dat';
+        
+        const mapStoragePath = document.getElementById('map-storage-path');
+        if (mapStoragePath) mapStoragePath.value = config.map_storage_path || '';
+        
         updateStatusInfo(config);
-        
-        showMessage('配置加载成功', 'success');
     } catch (error) {
-        showMessage('加载配置失败: ' + error.message, 'error');
-    } finally {
-        showLoading(false);
+        console.error('加载配置失败:', error);
     }
 }
 
-// 保存配置
-async function saveConfig(event) {
-    event.preventDefault();
+async function saveConfig(e) {
+    e.preventDefault();
     
     try {
-        showLoading(true);
-        
         const formData = new FormData(document.getElementById('config-form'));
         const config = {
             password: formData.get('password'),
             encrypt_type: formData.get('encrypt_type'),
             target_paths: formData.get('target_paths').split('\n').filter(p => p.trim() !== ''),
             obfuscate_suffix: formData.get('obfuscate_suffix'),
-            obfuscate_name_length: 12, // 默认值
-            map_filename: '.app_encrypt', // 默认值
-            lock_filename: '.encrypt.lock', // 默认值
+            obfuscate_name_length: 12,
+            map_filename: '.app_encrypt',
+            lock_filename: '.encrypt.lock',
             map_storage_path: formData.get('map_storage_path'),
-            salt: '' // 默认值
+            salt: ''
         };
         
         const response = await fetch('/api/config', {
@@ -223,99 +169,90 @@ async function saveConfig(event) {
         }
     } catch (error) {
         showMessage('保存配置失败: ' + error.message, 'error');
-    } finally {
-        showLoading(false);
     }
 }
 
-// 更新状态信息显示
 function updateStatusInfo(config) {
-    const algorithmElement = document.getElementById('encrypt-algorithm');
-    const pathsElement = document.getElementById('target-paths-count');
+    const algoElement = document.getElementById('current-algo');
+    const algoNames = {
+        'aes': 'AES-256',
+        'blowfish': 'Blowfish',
+        'xor': 'XOR'
+    };
+    if (algoElement) algoElement.textContent = algoNames[config.encrypt_type] || 'AES-256';
     
-    if (algorithmElement) {
-        const algorithmNames = {
-            'aes': 'AES',
-            'blowfish': 'Blowfish',
-            'xor': 'XOR'
-        };
-        algorithmElement.textContent = algorithmNames[config.encrypt_type] || '-';
-    }
-    
-    if (pathsElement) {
-        pathsElement.textContent = (config.target_paths || []).length;
-    }
+    const pathsElement = document.getElementById('paths-count');
+    if (pathsElement) pathsElement.textContent = (config.target_paths || []).length;
 }
 
-// 加载文件列表
 async function loadFileList() {
     try {
-        showLoading(true);
-        
         const response = await fetch('/api/files');
         const data = await response.json();
+        currentFiles = data.files || [];
         
-        const fileListBody = document.querySelector('#file-list tbody');
-        if (fileListBody) {
-            fileListBody.innerHTML = '';
-            
-            if (data.files && data.files.length > 0) {
-                // Group files by target directory
-                const groupedFiles = {};
-                data.files.forEach(file => {
-                    const targetDir = file.target_dir || 'unknown';
-                    if (!groupedFiles[targetDir]) {
-                        groupedFiles[targetDir] = [];
-                    }
-                    groupedFiles[targetDir].push(file);
-                });
-                
-                // Display files grouped by target directory
-                Object.keys(groupedFiles).forEach(targetDir => {
-                    // Add group header
-                    const groupHeader = document.createElement('tr');
-                    groupHeader.className = 'file-group-header';
-                    groupHeader.innerHTML = `<td colspan="5"><strong>📁 目标路径: ${escapeHtml(targetDir)}</strong></td>`;
-                    fileListBody.appendChild(groupHeader);
-                    
-                    // Add files in this group
-                    groupedFiles[targetDir].forEach(file => {
-                        const row = document.createElement('tr');
-                        // 获取盐值，如果不存在则显示"-"
-                        const saltValue = file.salt || '-';
-                        row.innerHTML = `
-                            <td style="padding-left: 20px;">${escapeHtml(file.original_path || '-')}</td>
-                            <td>${escapeHtml(file.encrypted_path || '-')}</td>
-                            <td>${file.md5 || '-'}</td>
-                            <td>${saltValue}</td>
-                            <td>${file.target_dir || '-'}</td>
-                        `;
-                        fileListBody.appendChild(row);
-                    });
-                });
-            } else {
-                const row = document.createElement('tr');
-                row.innerHTML = '<td colspan="5" style="text-align: center;">暂无加密文件</td>';
-                fileListBody.appendChild(row);
-            }
-        }
+        renderFileList(currentFiles);
         
-        showMessage('文件列表刷新成功', 'success');
+        const encryptedCount = document.getElementById('encrypted-count');
+        if (encryptedCount) encryptedCount.textContent = currentFiles.length;
+        
+        const totalFiles = document.getElementById('total-files');
+        if (totalFiles) totalFiles.textContent = currentFiles.length;
     } catch (error) {
-        showMessage('加载文件列表失败: ' + error.message, 'error');
-    } finally {
-        showLoading(false);
+        console.error('加载文件列表失败:', error);
     }
 }
 
-// 开始加密
+function renderFileList(files) {
+    const fileListBody = document.querySelector('#file-list');
+    if (!fileListBody) return;
+    
+    if (!files || files.length === 0) {
+        fileListBody.innerHTML = `
+            <tr class="empty-row">
+                <td colspan="5">
+                    <div class="empty-state">
+                        <i class="fas fa-folder-open"></i>
+                        <p>暂无加密文件</p>
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    fileListBody.innerHTML = files.map(file => {
+        const originalPath = escapeHtml(file.original_path || '-');
+        const encryptedPath = escapeHtml(file.encrypted_path || '-');
+        const md5 = file.md5 ? file.md5.substring(0, 16) + '...' : '-';
+        const size = file.size ? formatFileSize(file.size) : '-';
+        const targetDir = escapeHtml(file.target_dir || '-');
+        
+        return `
+            <tr>
+                <td><i class="fas fa-file"></i> ${originalPath}</td>
+                <td><i class="fas fa-lock"></i> ${encryptedPath}</td>
+                <td><i class="fas fa-fingerprint"></i> ${md5}</td>
+                <td>${size}</td>
+                <td><i class="fas fa-folder"></i> ${targetDir}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function filterFiles(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const filteredFiles = currentFiles.filter(file => {
+        return (file.original_path && file.original_path.toLowerCase().includes(searchTerm)) ||
+               (file.encrypted_path && file.encrypted_path.toLowerCase().includes(searchTerm)) ||
+               (file.target_dir && file.target_dir.toLowerCase().includes(searchTerm));
+    });
+    renderFileList(filteredFiles);
+}
+
 async function startEncryption() {
     try {
-        showLoading(true);
         updateOperationButtons(true);
-        
-        // 重置进度条
-        updateProgress(0, '准备开始加密...');
         
         const response = await fetch('/api/start?mode=encrypt', {
             method: 'POST'
@@ -331,19 +268,12 @@ async function startEncryption() {
     } catch (error) {
         showMessage('启动加密失败: ' + error.message, 'error');
         updateOperationButtons(false);
-    } finally {
-        showLoading(false);
     }
 }
 
-// 开始解密
 async function startDecryption() {
     try {
-        showLoading(true);
         updateOperationButtons(true);
-        
-        // 重置进度条
-        updateProgress(0, '准备开始解密...');
         
         const response = await fetch('/api/start?mode=decrypt', {
             method: 'POST'
@@ -359,16 +289,11 @@ async function startDecryption() {
     } catch (error) {
         showMessage('启动解密失败: ' + error.message, 'error');
         updateOperationButtons(false);
-    } finally {
-        showLoading(false);
     }
 }
 
-// 停止操作
 async function stopOperation() {
     try {
-        showLoading(true);
-        
         const response = await fetch('/api/stop', {
             method: 'POST'
         });
@@ -384,23 +309,28 @@ async function stopOperation() {
         }
     } catch (error) {
         showMessage('停止操作失败: ' + error.message, 'error');
-    } finally {
-        showLoading(false);
     }
 }
 
-// 更新操作按钮状态
 function updateOperationButtons(running) {
     const startEncryptBtn = document.getElementById('start-encrypt');
     const startDecryptBtn = document.getElementById('start-decrypt');
     const stopOperationBtn = document.getElementById('stop-operation');
+    const operationStatus = document.getElementById('operation-status');
     
     if (startEncryptBtn) startEncryptBtn.disabled = running;
     if (startDecryptBtn) startDecryptBtn.disabled = running;
     if (stopOperationBtn) stopOperationBtn.disabled = !running;
+    
+    if (operationStatus) {
+        if (running) {
+            operationStatus.innerHTML = '<i class="fas fa-circle"></i> 运行中';
+        } else {
+            operationStatus.innerHTML = '<i class="fas fa-circle"></i> 待命';
+        }
+    }
 }
 
-// 开始进度跟踪
 function startProgressTracking() {
     if (progressInterval) {
         clearInterval(progressInterval);
@@ -413,50 +343,42 @@ function startProgressTracking() {
         }
         
         try {
-            // 从服务器获取实际进度
             const response = await fetch('/api/progress');
             if (response.ok) {
                 const progressData = await response.json();
                 
-                // 检查操作是否仍在运行
                 if (!progressData.is_running) {
-                    // 操作已完成
                     clearInterval(progressInterval);
                     updateOperationButtons(false);
                     updateProgress(100, '操作完成');
                     showMessage(`${currentOperation === 'encrypt' ? '加密' : '解密'}完成`, 'success');
                     currentOperation = null;
-                    
-                    // 在操作完成后刷新映射表
                     loadFileList();
                     return;
                 }
                 
-                // 显示文件数量进度而不是百分比
                 const currentProcessed = progressData.current_processed;
                 const totalToProcess = progressData.total_to_process;
                 
-                // 更新进度条（仍然使用百分比来填充进度条，但显示文本改为文件数量）
                 let percent = 0;
                 if (totalToProcess > 0) {
                     percent = (currentProcessed / totalToProcess) * 100;
                 }
                 
-                // 确保进度不超过100%
                 if (percent > 100) percent = 100;
                 
-                // 更新进度显示文本为文件数量格式
-                updateProgress(percent, `${currentOperation === 'encrypt' ? '加密' : '解密'}进行中... (${currentProcessed}/${totalToProcess})`);
+                updateProgress(
+                    percent,
+                    `${currentOperation === 'encrypt' ? '加密' : '解密'}进行中`,
+                    `${currentProcessed}/${totalToProcess}`
+                );
             }
         } catch (error) {
             console.error('获取进度信息失败:', error);
-            // 如果获取进度失败，继续使用之前的逻辑
-            updateProgress(0, '获取进度信息失败');
         }
     }, 1000);
 }
 
-// 停止进度跟踪
 function stopProgressTracking() {
     if (progressInterval) {
         clearInterval(progressInterval);
@@ -464,32 +386,22 @@ function stopProgressTracking() {
     }
 }
 
-// 更新进度条
-function updateProgress(percent, text) {
+function updateProgress(percent, text, countText) {
     const progressFill = document.getElementById('progress-fill');
     const progressText = document.getElementById('progress-text');
     const progressPercent = document.getElementById('progress-percent');
     
     if (progressFill) {
-        // 使用动画效果使进度条变化更平滑
-        progressFill.style.transition = 'width 0.3s ease';
         progressFill.style.width = percent + '%';
     }
-    if (progressText) progressText.textContent = text;
+    if (progressText) {
+        progressText.textContent = text;
+    }
     if (progressPercent) {
-        // 不显示百分比数值，或者显示文件数量进度
-        const match = text.match(/\((\d+)\/(\d+)\)/);
-        if (match) {
-            // 如果文本中包含文件数量信息，只显示这部分
-            progressPercent.textContent = `${match[1]}/${match[2]}`;
-        } else {
-            // 否则隐藏百分比显示
-            progressPercent.textContent = '';
-        }
+        progressPercent.textContent = countText || '';
     }
 }
 
-// 开始日志流
 function startLogStream() {
     if (logStream) {
         logStream.close();
@@ -511,73 +423,95 @@ function startLogStream() {
     };
 }
 
-// 添加日志消息
 function addLogMessage(message, level) {
     const logContent = document.getElementById('log-content');
     const autoScroll = document.getElementById('auto-scroll');
     
-    if (logContent) {
-        const timestamp = new Date().toLocaleTimeString();
-        const logEntry = `[${timestamp}] ${message}\n`;
-        
-        logContent.textContent += logEntry;
-        
-        // 自动滚动到底部
-        if (autoScroll && autoScroll.checked) {
-            logContent.scrollTop = logContent.scrollHeight;
-        }
+    if (!logContent) return;
+    
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = document.createElement('div');
+    logEntry.className = 'log-line';
+    logEntry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${escapeHtml(message)}`;
+    
+    logContent.appendChild(logEntry);
+    
+    if (autoScroll && autoScroll.checked) {
+        logContent.scrollTop = logContent.scrollHeight;
     }
 }
 
-// 清空日志
 function clearLogs() {
     const logContent = document.getElementById('log-content');
     if (logContent) {
-        logContent.textContent = '';
+        logContent.innerHTML = '';
     }
 }
 
-// 显示消息提示
 function showMessage(message, type) {
-    // 移除现有的消息
     const existingMessage = document.querySelector('.message');
     if (existingMessage) {
         existingMessage.remove();
     }
     
-    // 创建新消息
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
     messageDiv.textContent = message;
     
+    const style = document.createElement('style');
+    style.textContent = `
+        .message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 12px;
+            color: white;
+            font-weight: 600;
+            z-index: 10000;
+            animation: slideIn 0.3s ease;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .message.success {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+        }
+        .message.error {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+    `;
+    
+    if (!document.querySelector('style[message]')) {
+        style.setAttribute('message', 'true');
+        document.head.appendChild(style);
+    }
+    
     document.body.appendChild(messageDiv);
     
-    // 3秒后自动移除
     setTimeout(() => {
         if (messageDiv.parentNode) {
-            messageDiv.parentNode.removeChild(messageDiv);
+            messageDiv.remove();
         }
     }, 3000);
 }
 
-// 显示加载状态
-function showLoading(show) {
-    // 这里可以实现全局加载状态显示
-    // 暂时留空
-}
-
-// 格式化文件大小
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
-    
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// 转义HTML
 function escapeHtml(text) {
     const map = {
         '&': '&amp;',
@@ -586,6 +520,5 @@ function escapeHtml(text) {
         '"': '&quot;',
         "'": '&#039;'
     };
-    
     return text.replace(/[&<>"']/g, function(m) { return map[m]; });
 }
