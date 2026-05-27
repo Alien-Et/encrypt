@@ -399,12 +399,12 @@ func generateEncryptKey(password, encryptType, saltStr string) ([]byte, error) {
 		}
 		fmt.Println("🔑 使用配置文件中指定的盐值")
 	} else {
-		// 如果配置文件中没有指定盐值，生成固定的默认盐值
+		// 生成安全的随机盐值
 		salt = make([]byte, SaltSize)
-		for i := range salt {
-			salt[i] = byte(i) // 使用简单的固定模式
+		if _, err := crand.Read(salt); err != nil {
+			return nil, fmt.Errorf("生成随机盐值失败: %v", err)
 		}
-		fmt.Println("🔑 使用默认固定盐值")
+		fmt.Println("🔑 使用安全随机盐值")
 	}
 	
 	// 使用PBKDF2派生密钥
@@ -694,7 +694,8 @@ func encryptFiles(targetDir string, key []byte, config *DynamicConfig, fileMap m
 		filesToProcess[file] = true
 	}
 
-	_ = filepath.Walk(targetDir, func(root string, info os.FileInfo, err error) error {		if err != nil {
+	_ = filepath.Walk(targetDir, func(root string, info os.FileInfo, err error) error {
+		if err != nil {
 			fmt.Printf("⚠️  访问路径失败: %s, 错误: %v\n", root, err)
 			return nil
 		}
@@ -785,7 +786,7 @@ func encryptFiles(targetDir string, key []byte, config *DynamicConfig, fileMap m
 			stat.CurrentProcessed++
 			return nil
 		}
-	if err := os.Chmod(obfFilePath, 0644); err != nil {
+		if err := os.Chmod(obfFilePath, 0644); err != nil {
 			fmt.Printf("⚠️  修改加密文件权限失败: %s, 错误: %v\n", obfFilePath, err)
 		}
 
@@ -1528,14 +1529,22 @@ func recoverDirs(targetDir string, config *DynamicConfig, dirMap map[string]*Dir
 				fmt.Printf("🔍 映射信息 - 混淆目录: %s, 原始路径: %s, 目标目录: %s\n", dirName, dirItem.OriginalPath, dirItem.TargetDir)
 				
 				// 正确构建原始完整目录路径
-				// 需要根据映射表中的信息正确构建路径
+				// 直接使用当前处理的目标目录作为基础路径
+				// dirItem.OriginalPath 是相对于 targetDir 的路径
 				var newPath string
-				if filepath.IsAbs(dirItem.TargetDir) {
-					// 如果TargetDir是绝对路径
-					newPath = filepath.Join(dirItem.TargetDir, dirItem.OriginalPath)
+				if filepath.IsAbs(dirItem.OriginalPath) {
+					// 如果原始路径是绝对路径（不应该发生，但做防御性处理）
+					newPath = dirItem.OriginalPath
 				} else {
-					// 如果TargetDir是相对路径，需要根据当前targetDir构建
+					// 原始路径是相对路径，直接相对于 targetDir 构建
 					newPath = filepath.Join(targetDir, dirItem.OriginalPath)
+				}
+				
+				// 验证构建的路径是安全的（在 targetDir 下）
+				relPath, err := filepath.Rel(targetDir, newPath)
+				if err != nil || strings.HasPrefix(relPath, "..") {
+					fmt.Printf("⚠️  路径验证失败，可能存在路径遍历风险: %s\n", newPath)
+					continue
 				}
 				
 				fmt.Printf("🔍 路径信息 - 旧路径: %s, 新路径: %s\n", oldPath, newPath)
