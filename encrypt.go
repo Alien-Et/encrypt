@@ -565,33 +565,25 @@ func obfuscateDirsBottomUp(currentDir string, config *DynamicConfig, dirMap map[
 			}
 		}
 
-		// 保存相对于目标目录的路径
-		var originalRelPath string
-		matchedTargetPath := ""
+		// 查找目标目录，用于保存映射关系
+		var matchedTargetPath string
 		for _, targetPath := range config.TargetPaths {
 			if strings.HasPrefix(currentDir, targetPath) {
 				matchedTargetPath = targetPath
-				relDir, err := filepath.Rel(targetPath, currentDir)
-				if err == nil {
-					if relDir == "." {
-						originalRelPath = dirName
-					} else {
-						originalRelPath = filepath.Join(relDir, dirName)
-					}
-					break
-				}
+				break
 			}
 		}
-		
-		// 如果没有匹配的目标路径，使用简单的目录名
-		if originalRelPath == "" {
-			originalRelPath = dirName
+		// 如果没有匹配的目标路径，使用当前目录
+		if matchedTargetPath == "" {
 			matchedTargetPath = currentDir
 		}
 
+		// 关键修复：只保存当前目录名，而不是完整相对路径
+		originalDirName := filepath.Base(dirName)
+
 		// 记录映射关系
 		dirMap[obfDirName] = &DirMapItem{
-			OriginalPath: originalRelPath,
+			OriginalPath: originalDirName,
 			TargetDir:    matchedTargetPath,
 		}
 
@@ -1537,15 +1529,14 @@ func recoverDirs(targetDir string, config *DynamicConfig, dirMap map[string]*Dir
 				// 从映射表中获取原始路径信息
 				fmt.Printf("🔍 映射信息 - 混淆目录: %s, 原始路径: %s, 目标目录: %s\n", dirName, dirItem.OriginalPath, dirItem.TargetDir)
 				
-				// 正确构建原始完整目录路径
-				// 直接使用当前处理的目标目录作为基础路径
-				// dirItem.OriginalPath 是相对于 targetDir 的路径
+				// 关键修复：直接在当前 targetDir 下恢复目录，使用原始目录名
+				// dirItem.OriginalPath 只包含当前目录名
 				var newPath string
 				if filepath.IsAbs(dirItem.OriginalPath) {
 					// 如果原始路径是绝对路径（不应该发生，但做防御性处理）
 					newPath = dirItem.OriginalPath
 				} else {
-					// 原始路径是相对路径，直接相对于 targetDir 构建
+					// 原始路径是目录名，直接在当前 targetDir 下构建
 					newPath = filepath.Join(targetDir, dirItem.OriginalPath)
 				}
 				
@@ -1557,16 +1548,6 @@ func recoverDirs(targetDir string, config *DynamicConfig, dirMap map[string]*Dir
 				}
 				
 				fmt.Printf("🔍 路径信息 - 旧路径: %s, 新路径: %s\n", oldPath, newPath)
-				
-				// 确保父目录存在，但避免创建不必要的目录
-				parentDir := filepath.Dir(newPath)
-				// 只有当父目录不等于当前处理目录时才创建
-				if parentDir != targetDir && parentDir != "." {
-					if err := os.MkdirAll(parentDir, 0755); err != nil {
-						fmt.Printf("⚠️  创建父目录失败: %s, 错误: %v\n", parentDir, err)
-						continue
-					}
-				}
 				
 				// 检查目标路径是否已存在
 				if isDir(newPath) {
