@@ -210,7 +210,7 @@ function renderFileList(files) {
     if (!files || files.length === 0) {
         fileListBody.innerHTML = `
             <tr class="empty-row">
-                <td colspan="5">
+                <td colspan="6">
                     <div class="empty-state">
                         <i class="fas fa-folder-open"></i>
                         <p>暂无加密文件</p>
@@ -225,6 +225,7 @@ function renderFileList(files) {
         const originalPath = escapeHtml(file.original_path || '-');
         const encryptedPath = escapeHtml(file.encrypted_path || '-');
         const md5 = file.md5 ? file.md5.substring(0, 16) + '...' : '-';
+        const salt = file.salt ? escapeHtml(file.salt) : '-';
         const size = file.size ? formatFileSize(file.size) : '-';
         const targetDir = escapeHtml(file.target_dir || '-');
         
@@ -233,6 +234,7 @@ function renderFileList(files) {
                 <td><i class="fas fa-file"></i> ${originalPath}</td>
                 <td><i class="fas fa-lock"></i> ${encryptedPath}</td>
                 <td><i class="fas fa-fingerprint"></i> ${md5}</td>
+                <td><i class="fas fa-key"></i> ${salt}</td>
                 <td>${size}</td>
                 <td><i class="fas fa-folder"></i> ${targetDir}</td>
             </tr>
@@ -245,6 +247,7 @@ function filterFiles(e) {
     const filteredFiles = currentFiles.filter(file => {
         return (file.original_path && file.original_path.toLowerCase().includes(searchTerm)) ||
                (file.encrypted_path && file.encrypted_path.toLowerCase().includes(searchTerm)) ||
+               (file.salt && file.salt.toLowerCase().includes(searchTerm)) ||
                (file.target_dir && file.target_dir.toLowerCase().includes(searchTerm));
     });
     renderFileList(filteredFiles);
