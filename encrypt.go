@@ -240,7 +240,7 @@ func main() {
 			decryptTargetDir(path, key, config, globalFileMap, globalDirMap, stat)
 		}
 
-		// 解密完成后，删除映射表文件
+		// 解密完成后，删除映射表文件和盐值文件
 		mapPath := filepath.Join(config.MapStoragePath, config.MapFilename)
 		if isFile(mapPath) {
 			if err := os.Remove(mapPath); err != nil {
@@ -250,6 +250,15 @@ func main() {
 			}
 		} else {
 			fmt.Printf("ℹ️  映射表文件不存在: %s\n", mapPath)
+		}
+
+		saltPath := filepath.Join(config.MapStoragePath, config.MapFilename+".salt")
+		if isFile(saltPath) {
+			if err := os.Remove(saltPath); err != nil {
+				fmt.Printf("⚠️  删除盐值文件失败: %v\n", err)
+			} else {
+				fmt.Printf("✅ 盐值文件已删除: %s\n", saltPath)
+			}
 		}
 
 		// 输出解密统计信息
@@ -1782,6 +1791,22 @@ func loadGlobalMap(key []byte, config *DynamicConfig, fileMap *map[string]*FileM
 		return key
 	}
 
+	// 先尝试读取盐值文件（如果有的话），这样解密时能用正确的密钥
+	saltPath := filepath.Join(config.MapStoragePath, config.MapFilename+".salt")
+	if isFile(saltPath) {
+		saltBytes, err := os.ReadFile(saltPath)
+		if err == nil {
+			saltStr := strings.TrimSpace(string(saltBytes))
+			fmt.Printf("🔑 从独立文件加载盐值: %s\n", saltStr)
+			// 用这个盐值重新生成密钥
+			newKey, err := generateEncryptKey(config.Password, config.EncryptType, saltStr)
+			if err == nil {
+				key = newKey
+				fmt.Printf("🔄 使用盐值重新生成密钥成功，长度: %d 字节\n", len(newKey))
+			}
+		}
+	}
+
 	// 读取映射表文件
 	encryptedData, err := os.ReadFile(mapPath)
 	if err != nil {
@@ -1879,11 +1904,23 @@ func saveGlobalMap(key []byte, config *DynamicConfig, fileMap map[string]*FileMa
 		Dirs:  dirMap,
 	}
 
+	var saltStr string
 	// 如果密钥包含盐值，将其保存到映射表中
 	if len(key) > SaltSize {
 		salt := key[:SaltSize]
-		mapData.Salt = base64.StdEncoding.EncodeToString(salt)
-		fmt.Printf("🔐 保存盐值到映射表: %s\n", mapData.Salt)
+		saltStr = base64.StdEncoding.EncodeToString(salt)
+		mapData.Salt = saltStr
+		fmt.Printf("🔐 保存盐值到映射表: %s\n", saltStr)
+	}
+
+	// 先把盐值保存到独立文件（用于解密时能先拿到盐值）
+	if saltStr != "" {
+		saltPath := filepath.Join(config.MapStoragePath, config.MapFilename+".salt")
+		if err := os.WriteFile(saltPath, []byte(saltStr), 0600); err != nil {
+			fmt.Printf("⚠️  保存盐值文件失败: %v\n", err)
+		} else {
+			fmt.Printf("✅ 盐值文件保存成功: %s\n", saltPath)
+		}
 	}
 
 	// 序列化为JSON
