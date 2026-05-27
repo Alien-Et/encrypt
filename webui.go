@@ -941,7 +941,9 @@ func getEncryptedFiles() ([]map[string]interface{}, error) {
 					"encrypted_path": encryptedName,
 					"target_dir":     item.TargetDir,
 					"md5":            item.Md5,
-					"salt":           salt, // 添加盐值信息
+					"salt":           salt,         // 添加盐值信息
+					"password":       config.Password, // 添加加密密码信息
+					"encrypt_type":   config.EncryptType, // 添加加密类型
 				}
 				
 				// Get file stats if the encrypted file exists
