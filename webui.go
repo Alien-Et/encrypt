@@ -907,6 +907,16 @@ func getEncryptedFiles() ([]map[string]interface{}, error) {
 			globalFileMap := make(map[string]*FileMapItem)
 			globalDirMap := make(map[string]*DirMapItem)
 			
+			// 先尝试读取独立的盐值文件
+			saltPath := filepath.Join(config.MapStoragePath, config.MapFilename+".salt")
+			if isFile(saltPath) {
+				saltBytes, err := os.ReadFile(saltPath)
+				if err == nil {
+					config.Salt = strings.TrimSpace(string(saltBytes))
+					fmt.Printf("[DEBUG] 从独立文件读取到盐值: %s\n", config.Salt)
+				}
+			}
+			
 			// Generate a dummy key for loading (we only need to read the file list, not decrypt files)
 			key, err := generateEncryptKey(config.Password, config.EncryptType, config.Salt)
 			if err != nil {
@@ -922,18 +932,21 @@ func getEncryptedFiles() ([]map[string]interface{}, error) {
 			targetFiles := make(map[string][]map[string]interface{})
 			
 			// Extract file information
-			for originalPath, item := range globalFileMap {
+			for encryptedName, item := range globalFileMap {
+				// 构建正确的加密文件完整路径
+				encryptedFilePath := filepath.Join(item.TargetDir, encryptedName)
+				
 				fileInfo := map[string]interface{}{
-					"original_path":  originalPath,
-					"encrypted_path": item.Path,
+					"original_path":  item.Path,
+					"encrypted_path": encryptedName,
 					"target_dir":     item.TargetDir,
 					"md5":            item.Md5,
 					"salt":           salt, // 添加盐值信息
 				}
 				
 				// Get file stats if the encrypted file exists
-				if isFile(item.Path) {
-					if stat, err := os.Stat(item.Path); err == nil {
+				if isFile(encryptedFilePath) {
+					if stat, err := os.Stat(encryptedFilePath); err == nil {
 						fileInfo["size"] = stat.Size()
 						fileInfo["modified"] = stat.ModTime().Format("2006-01-02 15:04:05")
 					}

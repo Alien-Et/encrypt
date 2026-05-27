@@ -1,7 +1,7 @@
-password: testpassword123!@#
-encrypt_type: xor
+password: test123
+encrypt_type: aes
 target_paths:
-  - /workspace/xor_nested
+  - /workspace/test_data
 obfuscate_suffix: .dat
 obfuscate_name_length: 12
 map_filename: .app_encrypt
