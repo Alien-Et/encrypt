@@ -1,9 +1,0 @@
-password: testpassword123!@#
-encrypt_type: blowfish
-target_paths:
-  - /workspace/bf_single
-obfuscate_suffix: .dat
-obfuscate_name_length: 12
-map_filename: .app_encrypt
-lock_filename: .encrypt.lock
-map_storage_path: /workspace/tmp

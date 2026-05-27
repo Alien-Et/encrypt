@@ -1,9 +1,0 @@
-password: testpassword123!@#
-encrypt_type: xor
-target_paths:
-  - /workspace/xor_single
-obfuscate_suffix: .dat
-obfuscate_name_length: 12
-map_filename: .app_encrypt
-lock_filename: .encrypt.lock
-map_storage_path: /workspace/tmp

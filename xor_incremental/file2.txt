@@ -1,1 +1,0 @@
-This is file2 - NEW UNENCRYPTED FILE added after initial encryption
