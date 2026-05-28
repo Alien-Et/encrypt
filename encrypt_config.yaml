@@ -1,7 +1,7 @@
 password: test123
-encrypt_type: aes
+encrypt_type: xor
 target_paths:
-  - /workspace/test_data
+- /workspace/test_data
 obfuscate_suffix: .dat
 obfuscate_name_length: 12
 map_filename: .app_encrypt
