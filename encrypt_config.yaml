@@ -1,5 +1,5 @@
 password: test123
-encrypt_type: xor
+encrypt_type: aes
 target_paths:
 - /workspace/test_data
 obfuscate_suffix: .dat

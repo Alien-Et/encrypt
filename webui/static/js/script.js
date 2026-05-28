@@ -162,13 +162,14 @@ async function saveConfig(e) {
         });
         
         if (response.ok) {
-            showMessage('配置保存成功', 'success');
+            showMessage('✅ 配置保存成功！加密类型：' + config.encrypt_type.toUpperCase(), 'success');
             updateStatusInfo(config);
         } else {
-            throw new Error('保存配置失败');
+            const errorText = await response.text();
+            throw new Error('保存配置失败: ' + errorText);
         }
     } catch (error) {
-        showMessage('保存配置失败: ' + error.message, 'error');
+        showMessage('❌ 保存配置失败: ' + error.message, 'error');
     }
 }
 
