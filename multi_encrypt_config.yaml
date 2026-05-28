@@ -1,0 +1,11 @@
+password: testpassword123!@#
+encrypt_type: aes
+target_paths:
+  - /workspace/multi_test/folder1
+  - /workspace/multi_test/folder2
+  - /workspace/multi_test/folder3
+obfuscate_suffix: .dat
+obfuscate_name_length: 12
+map_filename: .app_encrypt
+lock_filename: .encrypt.lock
+map_storage_path: /workspace/tmp

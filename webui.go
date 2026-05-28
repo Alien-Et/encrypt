@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/crypto/blowfish"
 	"gopkg.in/yaml.v2"
 )
 
@@ -47,6 +48,13 @@ var globalServer *WebServer
 var (
 	currentProgress ProgressData
 	progressMutex  sync.RWMutex
+)
+
+// Global operation context for cancellation
+var (
+	operationCtx    context.Context
+	operationCancel context.CancelFunc
+	operationMutex  sync.Mutex
 )
 
 // Log channel management
@@ -501,18 +509,19 @@ func (ws *WebServer) handleDecryptPreview(w http.ResponseWriter, r *http.Request
 	// Find the encrypted file path from the mapping table
 	var actualFilePath string
 	found := false
-	
+
 	// Look for the file in the mapping table
-	for originalPath, item := range globalFileMap {
-		// Check if the original path matches the requested file path
-		if originalPath == filePath {
-			actualFilePath = item.Path
+	// globalFileMap 的 key 是加密后的文件名，item.Path 是原始相对路径
+	for encryptedName, item := range globalFileMap {
+		// Check if the encrypted file name matches the requested path
+		if encryptedName == filePath || filepath.Base(encryptedName) == filePath {
+			actualFilePath = filepath.Join(item.TargetDir, encryptedName)
 			found = true
 			break
 		}
-		// Also check if the encrypted file name matches
+		// Also check if the original path matches
 		if item.Path == filePath || filepath.Base(item.Path) == filePath {
-			actualFilePath = item.Path
+			actualFilePath = filepath.Join(item.TargetDir, encryptedName)
 			found = true
 			break
 		}
@@ -593,26 +602,48 @@ func (ws *WebServer) handleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Start the operation in a goroutine
-	go func() {
-		if mode == "encrypt" {
-			startEncryption()
-		} else {
-			startDecryption()
+	// Cancel any existing operation
+	operationMutex.Lock()
+	if operationCancel != nil {
+		operationCancel()
+	}
+	// Create a new context for the operation
+	operationCtx, operationCancel = context.WithCancel(context.Background())
+	operationMutex.Unlock()
+
+	// Start the operation in a goroutine with context
+	go func(ctx context.Context) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			if mode == "encrypt" {
+				startEncryption()
+			} else {
+				startDecryption()
+			}
 		}
-	}()
+	}(operationCtx)
 
 	response := map[string]string{
 		"status": "started",
 		"mode":   mode,
 	}
-	
+
 	json.NewEncoder(w).Encode(response)
 }
 
 // handleStop handles stop API requests
 func (ws *WebServer) handleStop(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Cancel any running operation
+	operationMutex.Lock()
+	if operationCancel != nil {
+		operationCancel()
+		broadcastLog(`{"message": "操作已取消", "level": "warn", "type": "cancelled"}`)
+	}
+	operationMutex.Unlock()
 
 	// Stop the server
 	if err := ws.Stop(); err != nil {
@@ -623,7 +654,7 @@ func (ws *WebServer) handleStop(w http.ResponseWriter, r *http.Request) {
 	response := map[string]string{
 		"status": "stopped",
 	}
-	
+
 	json.NewEncoder(w).Encode(response)
 }
 
@@ -876,6 +907,16 @@ func getEncryptedFiles() ([]map[string]interface{}, error) {
 			globalFileMap := make(map[string]*FileMapItem)
 			globalDirMap := make(map[string]*DirMapItem)
 			
+			// 先尝试读取独立的盐值文件
+			saltPath := filepath.Join(config.MapStoragePath, config.MapFilename+".salt")
+			if isFile(saltPath) {
+				saltBytes, err := os.ReadFile(saltPath)
+				if err == nil {
+					config.Salt = strings.TrimSpace(string(saltBytes))
+					fmt.Printf("[DEBUG] 从独立文件读取到盐值: %s\n", config.Salt)
+				}
+			}
+			
 			// Generate a dummy key for loading (we only need to read the file list, not decrypt files)
 			key, err := generateEncryptKey(config.Password, config.EncryptType, config.Salt)
 			if err != nil {
@@ -891,18 +932,23 @@ func getEncryptedFiles() ([]map[string]interface{}, error) {
 			targetFiles := make(map[string][]map[string]interface{})
 			
 			// Extract file information
-			for originalPath, item := range globalFileMap {
+			for encryptedName, item := range globalFileMap {
+				// 构建正确的加密文件完整路径
+				encryptedFilePath := filepath.Join(item.TargetDir, encryptedName)
+				
 				fileInfo := map[string]interface{}{
-					"original_path":  originalPath,
-					"encrypted_path": item.Path,
+					"original_path":  item.Path,
+					"encrypted_path": encryptedName,
 					"target_dir":     item.TargetDir,
 					"md5":            item.Md5,
-					"salt":           salt, // 添加盐值信息
+					"salt":           salt,         // 添加盐值信息
+					"password":       config.Password, // 添加加密密码信息
+					"encrypt_type":   config.EncryptType, // 添加加密类型
 				}
 				
 				// Get file stats if the encrypted file exists
-				if isFile(item.Path) {
-					if stat, err := os.Stat(item.Path); err == nil {
+				if isFile(encryptedFilePath) {
+					if stat, err := os.Stat(encryptedFilePath); err == nil {
 						fileInfo["size"] = stat.Size()
 						fileInfo["modified"] = stat.ModTime().Format("2006-01-02 15:04:05")
 					}
@@ -1131,16 +1177,84 @@ func decryptAES(encryptedData, key []byte) ([]byte, error) {
 	return plaintext[:len(plaintext)-padLen], nil
 }
 
-// decryptBlowfish decrypts data using Blowfish (placeholder)
+// decryptBlowfish decrypts data using Blowfish
 func decryptBlowfish(encryptedData, key []byte) ([]byte, error) {
-	// This is a placeholder - actual implementation would depend on your Blowfish implementation
-	return nil, fmt.Errorf("Blowfish解密尚未实现")
+	if len(encryptedData) < blowfish.BlockSize {
+		return nil, fmt.Errorf("加密数据长度不足")
+	}
+
+	// Extract IV
+	iv := encryptedData[:blowfish.BlockSize]
+	ciphertext := encryptedData[blowfish.BlockSize:]
+
+	// Extract actual key (remove salt if present)
+	actualKey := key
+	if len(key) > SaltSize {
+		actualKey = key[SaltSize:]
+	}
+
+	// Ensure key size is correct for Blowfish
+	if len(actualKey) > BlowfishKeySize {
+		actualKey = actualKey[:BlowfishKeySize]
+	}
+
+	// Create cipher
+	block, err := blowfish.NewCipher(actualKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Decrypt
+	mode := cipher.NewCBCDecrypter(block, iv)
+	plaintext := make([]byte, len(ciphertext))
+	mode.CryptBlocks(plaintext, ciphertext)
+
+	// Remove PKCS#7 padding
+	if len(plaintext) == 0 {
+		return nil, fmt.Errorf("解密后的数据为空")
+	}
+
+	// Calculate padding length
+	padLen := int(plaintext[len(plaintext)-1])
+	if padLen > len(plaintext) || padLen > blowfish.BlockSize {
+		return nil, fmt.Errorf("无效的填充长度")
+	}
+
+	// Validate padding
+	for i := len(plaintext) - padLen; i < len(plaintext); i++ {
+		if plaintext[i] != byte(padLen) {
+			return nil, fmt.Errorf("无效的填充数据")
+		}
+	}
+
+	return plaintext[:len(plaintext)-padLen], nil
 }
 
-// decryptXOR decrypts data using XOR (placeholder)
+// decryptXOR decrypts data using XOR
 func decryptXOR(encryptedData, key []byte) ([]byte, error) {
-	// This is a placeholder - actual implementation would depend on your XOR implementation
-	return nil, fmt.Errorf("XOR解密尚未实现")
+	if len(encryptedData) == 0 {
+		return nil, fmt.Errorf("加密数据为空")
+	}
+
+	// Extract actual key (remove salt if present)
+	actualKey := key
+	if len(key) > SaltSize {
+		actualKey = key[SaltSize:]
+	}
+
+	// Ensure key size is correct for XOR
+	if len(actualKey) != XORKeySize {
+		return nil, fmt.Errorf("XOR密钥长度错误，需要%d字节，实际为%d字节", XORKeySize, len(actualKey))
+	}
+
+	// Decrypt by XORing with the same key
+	plaintext := make([]byte, len(encryptedData))
+	keyLen := len(actualKey)
+	for i := range encryptedData {
+		plaintext[i] = encryptedData[i] ^ actualKey[i%keyLen]
+	}
+
+	return plaintext, nil
 }
 
 // handleProgress handles progress tracking API requests

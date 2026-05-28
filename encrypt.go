@@ -240,7 +240,7 @@ func main() {
 			decryptTargetDir(path, key, config, globalFileMap, globalDirMap, stat)
 		}
 
-		// 解密完成后，删除映射表文件
+		// 解密完成后，删除映射表文件和盐值文件
 		mapPath := filepath.Join(config.MapStoragePath, config.MapFilename)
 		if isFile(mapPath) {
 			if err := os.Remove(mapPath); err != nil {
@@ -250,6 +250,15 @@ func main() {
 			}
 		} else {
 			fmt.Printf("ℹ️  映射表文件不存在: %s\n", mapPath)
+		}
+
+		saltPath := filepath.Join(config.MapStoragePath, config.MapFilename+".salt")
+		if isFile(saltPath) {
+			if err := os.Remove(saltPath); err != nil {
+				fmt.Printf("⚠️  删除盐值文件失败: %v\n", err)
+			} else {
+				fmt.Printf("✅ 盐值文件已删除: %s\n", saltPath)
+			}
 		}
 
 		// 输出解密统计信息
@@ -399,12 +408,12 @@ func generateEncryptKey(password, encryptType, saltStr string) ([]byte, error) {
 		}
 		fmt.Println("🔑 使用配置文件中指定的盐值")
 	} else {
-		// 如果配置文件中没有指定盐值，生成固定的默认盐值
+		// 生成安全的随机盐值
 		salt = make([]byte, SaltSize)
-		for i := range salt {
-			salt[i] = byte(i) // 使用简单的固定模式
+		if _, err := crand.Read(salt); err != nil {
+			return nil, fmt.Errorf("生成随机盐值失败: %v", err)
 		}
-		fmt.Println("🔑 使用默认固定盐值")
+		fmt.Println("🔑 使用安全随机盐值")
 	}
 	
 	// 使用PBKDF2派生密钥
@@ -556,33 +565,25 @@ func obfuscateDirsBottomUp(currentDir string, config *DynamicConfig, dirMap map[
 			}
 		}
 
-		// 保存相对于目标目录的路径
-		var originalRelPath string
-		matchedTargetPath := ""
+		// 查找目标目录，用于保存映射关系
+		var matchedTargetPath string
 		for _, targetPath := range config.TargetPaths {
 			if strings.HasPrefix(currentDir, targetPath) {
 				matchedTargetPath = targetPath
-				relDir, err := filepath.Rel(targetPath, currentDir)
-				if err == nil {
-					if relDir == "." {
-						originalRelPath = dirName
-					} else {
-						originalRelPath = filepath.Join(relDir, dirName)
-					}
-					break
-				}
+				break
 			}
 		}
-		
-		// 如果没有匹配的目标路径，使用简单的目录名
-		if originalRelPath == "" {
-			originalRelPath = dirName
+		// 如果没有匹配的目标路径，使用当前目录
+		if matchedTargetPath == "" {
 			matchedTargetPath = currentDir
 		}
 
+		// 关键修复：只保存当前目录名，而不是完整相对路径
+		originalDirName := filepath.Base(dirName)
+
 		// 记录映射关系
 		dirMap[obfDirName] = &DirMapItem{
-			OriginalPath: originalRelPath,
+			OriginalPath: originalDirName,
 			TargetDir:    matchedTargetPath,
 		}
 
@@ -694,7 +695,8 @@ func encryptFiles(targetDir string, key []byte, config *DynamicConfig, fileMap m
 		filesToProcess[file] = true
 	}
 
-	_ = filepath.Walk(targetDir, func(root string, info os.FileInfo, err error) error {		if err != nil {
+	_ = filepath.Walk(targetDir, func(root string, info os.FileInfo, err error) error {
+		if err != nil {
 			fmt.Printf("⚠️  访问路径失败: %s, 错误: %v\n", root, err)
 			return nil
 		}
@@ -785,7 +787,7 @@ func encryptFiles(targetDir string, key []byte, config *DynamicConfig, fileMap m
 			stat.CurrentProcessed++
 			return nil
 		}
-	if err := os.Chmod(obfFilePath, 0644); err != nil {
+		if err := os.Chmod(obfFilePath, 0644); err != nil {
 			fmt.Printf("⚠️  修改加密文件权限失败: %s, 错误: %v\n", obfFilePath, err)
 		}
 
@@ -1527,28 +1529,25 @@ func recoverDirs(targetDir string, config *DynamicConfig, dirMap map[string]*Dir
 				// 从映射表中获取原始路径信息
 				fmt.Printf("🔍 映射信息 - 混淆目录: %s, 原始路径: %s, 目标目录: %s\n", dirName, dirItem.OriginalPath, dirItem.TargetDir)
 				
-				// 正确构建原始完整目录路径
-				// 需要根据映射表中的信息正确构建路径
+				// 关键修复：直接在当前 targetDir 下恢复目录，使用原始目录名
+				// dirItem.OriginalPath 只包含当前目录名
 				var newPath string
-				if filepath.IsAbs(dirItem.TargetDir) {
-					// 如果TargetDir是绝对路径
-					newPath = filepath.Join(dirItem.TargetDir, dirItem.OriginalPath)
+				if filepath.IsAbs(dirItem.OriginalPath) {
+					// 如果原始路径是绝对路径（不应该发生，但做防御性处理）
+					newPath = dirItem.OriginalPath
 				} else {
-					// 如果TargetDir是相对路径，需要根据当前targetDir构建
+					// 原始路径是目录名，直接在当前 targetDir 下构建
 					newPath = filepath.Join(targetDir, dirItem.OriginalPath)
 				}
 				
-				fmt.Printf("🔍 路径信息 - 旧路径: %s, 新路径: %s\n", oldPath, newPath)
-				
-				// 确保父目录存在，但避免创建不必要的目录
-				parentDir := filepath.Dir(newPath)
-				// 只有当父目录不等于当前处理目录时才创建
-				if parentDir != targetDir && parentDir != "." {
-					if err := os.MkdirAll(parentDir, 0755); err != nil {
-						fmt.Printf("⚠️  创建父目录失败: %s, 错误: %v\n", parentDir, err)
-						continue
-					}
+				// 验证构建的路径是安全的（在 targetDir 下）
+				relPath, err := filepath.Rel(targetDir, newPath)
+				if err != nil || strings.HasPrefix(relPath, "..") {
+					fmt.Printf("⚠️  路径验证失败，可能存在路径遍历风险: %s\n", newPath)
+					continue
 				}
+				
+				fmt.Printf("🔍 路径信息 - 旧路径: %s, 新路径: %s\n", oldPath, newPath)
 				
 				// 检查目标路径是否已存在
 				if isDir(newPath) {
@@ -1773,6 +1772,22 @@ func loadGlobalMap(key []byte, config *DynamicConfig, fileMap *map[string]*FileM
 		return key
 	}
 
+	// 先尝试读取盐值文件（如果有的话），这样解密时能用正确的密钥
+	saltPath := filepath.Join(config.MapStoragePath, config.MapFilename+".salt")
+	if isFile(saltPath) {
+		saltBytes, err := os.ReadFile(saltPath)
+		if err == nil {
+			saltStr := strings.TrimSpace(string(saltBytes))
+			fmt.Printf("🔑 从独立文件加载盐值: %s\n", saltStr)
+			// 用这个盐值重新生成密钥
+			newKey, err := generateEncryptKey(config.Password, config.EncryptType, saltStr)
+			if err == nil {
+				key = newKey
+				fmt.Printf("🔄 使用盐值重新生成密钥成功，长度: %d 字节\n", len(newKey))
+			}
+		}
+	}
+
 	// 读取映射表文件
 	encryptedData, err := os.ReadFile(mapPath)
 	if err != nil {
@@ -1870,11 +1885,23 @@ func saveGlobalMap(key []byte, config *DynamicConfig, fileMap map[string]*FileMa
 		Dirs:  dirMap,
 	}
 
+	var saltStr string
 	// 如果密钥包含盐值，将其保存到映射表中
 	if len(key) > SaltSize {
 		salt := key[:SaltSize]
-		mapData.Salt = base64.StdEncoding.EncodeToString(salt)
-		fmt.Printf("🔐 保存盐值到映射表: %s\n", mapData.Salt)
+		saltStr = base64.StdEncoding.EncodeToString(salt)
+		mapData.Salt = saltStr
+		fmt.Printf("🔐 保存盐值到映射表: %s\n", saltStr)
+	}
+
+	// 先把盐值保存到独立文件（用于解密时能先拿到盐值）
+	if saltStr != "" {
+		saltPath := filepath.Join(config.MapStoragePath, config.MapFilename+".salt")
+		if err := os.WriteFile(saltPath, []byte(saltStr), 0600); err != nil {
+			fmt.Printf("⚠️  保存盐值文件失败: %v\n", err)
+		} else {
+			fmt.Printf("✅ 盐值文件保存成功: %s\n", saltPath)
+		}
 	}
 
 	// 序列化为JSON
